@@ -21,7 +21,7 @@ if not decoded or type(result) ~= "table" or result.valid ~= true then
     error("Oktan: invalid, expired or revoked key", 0)
 end
 local fetched, source = pcall(function()
-    return game:HttpGet("https://raw.githubusercontent.com/barmunddd/Oktan/ca7f8cc305691727b75a45967f2a56bd42f47831/client.luau")
+    return game:HttpGet("https://raw.githubusercontent.com/barmunddd/Oktan/252e82fb27e6eb069160994724eae54a912a1ac7/client.luau")
 end)
 if not fetched or type(source) ~= "string" or #source == 0 then
     error("Oktan: client download failed", 0)
