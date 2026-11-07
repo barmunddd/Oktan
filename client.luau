@@ -106,7 +106,7 @@ for _, definition in ipairs(definitions) do
     settings[key] = definition[2]
 end
 local bindings = { menu = "Insert", aim = "MouseButton2", zoom = "LeftAlt", inspect = "F4" }
-local allowedActions = { menu = true, inspect = true }
+local allowedActions = { menu = true, inspect = true, containerDump = true }
 for key, value in pairs(defaults) do
     if type(value) == "boolean" then
         allowedActions[key] = true
@@ -567,7 +567,7 @@ for index, definition in ipairs(definitions) do
     end
 end
 for index, entry in ipairs({
-    { "menu", "Menu" }, { "inspect", "Inspect" },
+    { "menu", "Menu" }, { "inspect", "Inspect" }, { "containerDump", "Export Container" },
 }) do
     local frame = row(pages["Бинды"], 100 + index, 54)
     table.insert(roleRows, frame)
@@ -636,6 +636,54 @@ end)
 
 refreshAll()
 
+local function exportContainer()
+    if type(writefile) ~= "function" then configStatus = "Экспорт: запись файлов недоступна"; return end
+    local camera = workspace.CurrentCamera
+    if not camera then return end
+    local params = RaycastParams.new()
+    params.FilterType = Enum.RaycastFilterType.Exclude
+    params.FilterDescendantsInstances = player.Character and { player.Character } or {}
+    local ray = camera:ViewportPointToRay(camera.ViewportSize.X / 2, camera.ViewportSize.Y / 2)
+    local hit = workspace:Raycast(ray.Origin, ray.Direction * 40, params)
+    if not hit then configStatus = "Экспорт: наведитесь на бокс с расстояния до 40 studs"; return end
+    local root = hit.Instance:FindFirstAncestorOfClass("Model") or hit.Instance
+    if root == player.Character or Players:GetPlayerFromCharacter(root) then
+        configStatus = "Экспорт: выбран персонаж, наведитесь на контейнер"; return
+    end
+    local report = { version = 1, placeId = game.PlaceId, target = root:GetFullName(),
+        hit = hit.Instance:GetFullName(), objects = {}, ancestors = {}, truncated = false }
+    local function describeObject(object)
+        local entry = { path = object:GetFullName(), class = object.ClassName, attributes = {} }
+        for key, value in pairs(object:GetAttributes()) do
+            local kind = type(value)
+            if kind == "string" then entry.attributes[key] = value:sub(1, 200)
+            elseif kind == "boolean" or kind == "number" then entry.attributes[key] = value end
+        end
+        if object:IsA("ObjectValue") then entry.reference = object.Value and object.Value:GetFullName() or nil
+        elseif object:IsA("StringValue") then entry.value = object.Value:sub(1, 200)
+        elseif object:IsA("NumberValue") or object:IsA("IntValue") or object:IsA("BoolValue") then entry.value = object.Value end
+        return entry
+    end
+    local function scan(object, depth)
+        if #report.objects >= 1200 or depth > 7 then report.truncated = true; return end
+        table.insert(report.objects, describeObject(object))
+        for _, child in ipairs(object:GetChildren()) do scan(child, depth + 1) end
+    end
+    local ok = pcall(function()
+        scan(root, 0)
+        local ancestor = root.Parent
+        for _ = 1, 4 do
+            if not ancestor or ancestor == game then break end
+            table.insert(report.ancestors, describeObject(ancestor))
+            ancestor = ancestor.Parent
+        end
+        local file = "Oktan-container-" .. tostring(DateTime.now().UnixTimestampMillis) .. ".json"
+        writefile(file, HttpService:JSONEncode(report))
+        configStatus = "Сохранено: " .. file
+    end)
+    if not ok then configStatus = "Экспорт контейнера не выполнен" end
+end
+
 local function inputName(input)
     if input.KeyCode ~= Enum.KeyCode.Unknown then return input.KeyCode.Name end
     return input.UserInputType.Name
@@ -674,6 +722,7 @@ connect(Input.InputBegan, function(input, processed)
     if processed or not focused then return end
     if name == bindings.menu then setMenu(not menu.Visible); return end
     if menu.Visible then return end
+    if name == bindings.containerDump then exportContainer(); return end
     if name == bindings.aim or name == bindings.zoom then return end
     if name == bindings.inspect and inspectAction then inspectAction(); return end
     for action, key in pairs(bindings) do
