@@ -55,10 +55,12 @@ stage("Starting client...")
 program()
 
 end
+local finished = false
 task.delay(20, function()
-    if ui.Parent then stage("Still waiting. Check the executor console; request or client startup may be delayed.") end
+    if not finished and ui.Parent then stage("Still waiting. Check the executor console; request or client startup may be delayed.") end
 end)
 local ok, message = pcall(boot)
+finished = true
 if ok then
     ui:Destroy()
 else
