@@ -2183,6 +2183,8 @@ local function aimAt(camera, deltaTime)
     end
 end
 
+local updateWinter
+do
 local function initializeWinter()
     local decoration = create("Frame", menu, {
         Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1,
@@ -2323,8 +2325,11 @@ local function initializeWinter()
         end
     end
 end
-local updateWinter = initializeWinter()
+updateWinter = initializeWinter()
+end
 
+local updateCameraVisuals
+do
 local function initializeCameraVisuals()
     local tracked, viewmodels = {}, {}
     local cameraLast, characterLast, characterConnection, scanTime = nil, nil, nil, 1
@@ -2414,8 +2419,11 @@ local function initializeCameraVisuals()
         end
     end
 end
-local updateCameraVisuals = initializeCameraVisuals()
+updateCameraVisuals = initializeCameraVisuals()
+end
 
+local updateLootESP
+do
 local function initializeLootESP()
     local marks, elapsed, scanElapsed = {}, 0, 2
     local roots = { corpses = "corpse", bodies = "corpse", deadbodies = "corpse",
@@ -2499,7 +2507,8 @@ local function initializeLootESP()
         end
     end
 end
-local updateLootESP = initializeLootESP()
+updateLootESP = initializeLootESP()
+end
 
 local renderName = "Oktan_" .. HttpService:GenerateGUID(false)
 local unloaded = false
@@ -2531,12 +2540,7 @@ task.spawn(function()
     end
 end)
 
-local elapsed = 1
-local visualElapsed = 1
-local viewportSize
-local shownRingRadius
-local shownCrossLength
-local shownCrossGap
+local renderState = { elapsed = 1, visualElapsed = 1 }
 RunService:BindToRenderStep(renderName, Enum.RenderPriority.Last.Value + 1, function(dt)
     local camera = workspace.CurrentCamera
     updateHud(dt)
@@ -2545,9 +2549,9 @@ RunService:BindToRenderStep(renderName, Enum.RenderPriority.Last.Value + 1, func
     updateCameraVisuals(dt, camera)
     applyTheme()
     ringStroke.Color = Color3.fromHSV(settings.fovHue / 360, settings.fovSaturation / 100, settings.fovValue / 100)
-    elapsed += dt
-    if elapsed >= 0.2 then
-        elapsed = 0
+    renderState.elapsed += dt
+    if renderState.elapsed >= 0.2 then
+        renderState.elapsed = 0
         refreshCandidates()
         updateMarkers(camera)
         updateLighting()
@@ -2571,9 +2575,9 @@ RunService:BindToRenderStep(renderName, Enum.RenderPriority.Last.Value + 1, func
             math.clamp(mouse.Y + 20, 0, math.max(0, viewport.Y - tooltip.AbsoluteSize.Y - 4)))
     end
     local color = Color3.fromHSV(settings.espHue / 360, settings.espSaturation / 100, settings.espValue / 100)
-    visualElapsed += dt
-    if visualElapsed >= 1 / settings.espFps then
-        visualElapsed = 0
+    renderState.visualElapsed += dt
+    if renderState.visualElapsed >= 1 / settings.espFps then
+        renderState.visualElapsed = 0
         table.clear(occupiedLabels)
         for _, marker in ipairs(orderedMarkers) do renderScreenMarker(marker, camera, color) end
     end
@@ -2582,17 +2586,17 @@ RunService:BindToRenderStep(renderName, Enum.RenderPriority.Last.Value + 1, func
     override("Zoom", camera, "FieldOfView", zooming and settings.zoomFov or (settings.cameraFov and settings.cameraFovValue or nil))
     enforceOverrides()
     ring.Visible = camera ~= nil and inputReady and settings.aim and settings.ring
-    if shownRingRadius ~= settings.radius then
-        shownRingRadius = settings.radius
-        ring.Size = UDim2.fromOffset(shownRingRadius * 2, shownRingRadius * 2)
+    if renderState.shownRingRadius ~= settings.radius then
+        renderState.shownRingRadius = settings.radius
+        ring.Size = UDim2.fromOffset(renderState.shownRingRadius * 2, renderState.shownRingRadius * 2)
     end
     local showCross = camera ~= nil and inputReady and settings.crosshair
     for _, arm in ipairs(crosshair) do arm.Visible = showCross end
-    if shownCrossLength ~= settings.length or shownCrossGap ~= settings.gap then
-        shownCrossLength = settings.length
-        shownCrossGap = settings.gap
-        local length = shownCrossLength
-        local offset = shownCrossGap + length / 2
+    if renderState.shownCrossLength ~= settings.length or renderState.shownCrossGap ~= settings.gap then
+        renderState.shownCrossLength = settings.length
+        renderState.shownCrossGap = settings.gap
+        local length = renderState.shownCrossLength
+        local offset = renderState.shownCrossGap + length / 2
         for index, arm in ipairs(crosshair) do
             local horizontal = index <= 2
             local signedOffset = index % 2 == 0 and offset or -offset
@@ -2600,10 +2604,10 @@ RunService:BindToRenderStep(renderName, Enum.RenderPriority.Last.Value + 1, func
             arm.Position = UDim2.new(0.5, horizontal and signedOffset or 0, 0.5, horizontal and 0 or signedOffset)
         end
     end
-    if camera and camera.ViewportSize ~= viewportSize then
-        viewportSize = camera.ViewportSize
+    if camera and camera.ViewportSize ~= renderState.viewportSize then
+        renderState.viewportSize = camera.ViewportSize
         menu.Position = UDim2.fromScale(0.5, 0.5)
-        scale.Scale = math.clamp(math.min((viewportSize.X - 22) / 920, (viewportSize.Y - 22) / 610), 0.2, 1)
+        scale.Scale = math.clamp(math.min((renderState.viewportSize.X - 22) / 920, (renderState.viewportSize.Y - 22) / 610), 0.2, 1)
     end
     if camera and inputReady and settings.aim and held("aim") then
         aimAt(camera, dt)
