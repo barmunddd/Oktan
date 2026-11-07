@@ -23,6 +23,11 @@ end
 
 -- Every exposed setting has its own description, bounds and keyboard actions.
 local definitions = {
+    { "corpseEsp", false, "Corpses", "Показывать распознанные трупы. Требует проверки структуры игры.", "ESP" },
+    { "itemEsp", false, "Items", "Показывать предметы в распознанных папках лута.", "ESP" },
+    { "lootThrough", false, "Loot Through Walls", "Показывать лут и трупы сквозь стены.", "ESP" },
+    { "lootRange", 250, "Loot Distance", "Дальность трупов и предметов в studs.", "ESP", 25, 1500 },
+    { "lootTextSize", 13, "Loot Text Size", "Размер подписей лута и трупов.", "ESP", 10, 20 },
     { "noVisor", false, "NoVisor", "Скрывает распознанную маску визора. Не меняет состояние или защиту шлема.", "Камера" },
     { "cameraFov", false, "FOV Override", "Применяет выбранное поле зрения. Удерживаемый Zoom имеет приоритет.", "Камера" },
     { "cameraFovValue", 90, "Camera FOV", "Поле зрения камеры в градусах: больше — шире обзор.", "Камера", 50, 120 },
@@ -1243,13 +1248,13 @@ describe(search, "Ищет по всем разделам, названиям и
 
 local treeGroups = {
     ["Наведение"] = { "Наведение", "Цели и проверки", "Область и плавность" },
-    ESP = { "Общее", "Подписи", "Геометрия", "Цвет и оформление" },
+    ESP = { "Общее", "Подписи", "Геометрия", "Цвет и оформление", "Loot" },
     ["Мир"] = { "Освещение" },
     ["Камера"] = { "Зум", "Прицел", "Vision", "Viewmodel" },
     ["Бинды"] = { "Инвентарь", "Dynamic Island", "Управление", "Назначения функций" },
     ["Настройки"] = { "Оформление", "Клиент" },
 }
-local settingGroup = {
+local settingGroup = { corpseEsp = "Loot", itemEsp = "Loot", lootThrough = "Loot", lootRange = "Loot", lootTextSize = "Loot",
     noVisor = "Vision", cameraFov = "Vision", cameraFovValue = "Vision",
     viewmodel = "Viewmodel", vmX = "Viewmodel", vmY = "Viewmodel", vmZ = "Viewmodel", sticky = "Наведение", noFog = "Освещение", bubbles = "Оформление", snow = "Оформление", snowDrifts = "Оформление", friendHats = "Оформление", espFps = "Цвет и оформление", adaptiveText = "Подписи",
     aim = "Наведение", aimPlayers = "Цели и проверки", aimDummies = "Цели и проверки",
@@ -2345,6 +2350,93 @@ local function initializeCameraVisuals()
 end
 local updateCameraVisuals = initializeCameraVisuals()
 
+local function initializeLootESP()
+    local marks, elapsed, scanElapsed = {}, 0, 2
+    local roots = { corpses = "corpse", bodies = "corpse", deadbodies = "corpse",
+        droppeditems = "item", grounditems = "item", loot = "item", items = "item" }
+    local function normalize(value) return value:lower():gsub("[%s_%-]", "") end
+    local function clear(object)
+        local mark = marks[object]
+        if mark then mark.gui:Destroy(); marks[object] = nil end
+    end
+    table.insert(cleanups, function()
+        for object in pairs(marks) do clear(object) end
+    end)
+    return function(dt, camera)
+        elapsed += dt
+        scanElapsed += dt
+        if elapsed < 0.25 then return end
+        local scan = scanElapsed >= 2
+        elapsed = 0
+        if scan then scanElapsed = 0 end
+        if not settings.corpseEsp and not settings.itemEsp then
+            for object in pairs(marks) do clear(object) end
+            scanElapsed = 2
+            return
+        end
+        if scan then
+            local seen, count = {}, 0
+            local function consider(object, kind)
+                if count >= 250 or (not object:IsA("Model") and not object:IsA("BasePart")) then return end
+                if Players:GetPlayerFromCharacter(object) then return end
+                local humanoid = object:IsA("Model") and object:FindFirstChildOfClass("Humanoid")
+                if humanoid and humanoid.Health > 0 then return end
+                if humanoid then kind = "corpse" end
+                local part = object:IsA("BasePart") and object or object.PrimaryPart or object:FindFirstChildWhichIsA("BasePart", true)
+                if not part then return end
+                seen[object], count = true, count + 1
+                if not marks[object] then
+                    local billboard = create("BillboardGui", gui, {
+                        Name = "OktanLootMarker", Adornee = part, Size = UDim2.fromOffset(230, 42),
+                        StudsOffset = Vector3.new(0, 1.5, 0), AlwaysOnTop = false, Enabled = false,
+                    })
+                    local label = text(billboard, "", {
+                        Size = UDim2.fromScale(1, 1), TextSize = 13,
+                        TextStrokeTransparency = 0.3, TextWrapped = true,
+                    })
+                    marks[object] = { gui = billboard, label = label, kind = kind, part = part }
+                end
+                marks[object].kind, marks[object].part = kind, part
+                marks[object].gui.Adornee = part
+            end
+            local function visit(folder, depth)
+                if depth > 3 then return end
+                for _, object in ipairs(folder:GetChildren()) do
+                    local kind = roots[normalize(object.Name)]
+                    if kind then
+                        for _, child in ipairs(object:GetChildren()) do
+                            if child:IsA("Folder") then
+                                for _, item in ipairs(child:GetChildren()) do consider(item, kind) end
+                            else consider(child, kind) end
+                        end
+                    elseif object:IsA("Folder") then visit(object, depth + 1)
+                    elseif object:IsA("Model") then
+                        local human = object:FindFirstChildOfClass("Humanoid")
+                        if human and human.Health <= 0 then consider(object, "corpse") end
+                    end
+                end
+            end
+            visit(workspace, 0)
+            for object in pairs(marks) do if not seen[object] then clear(object) end end
+        end
+        for object, mark in pairs(marks) do
+            if not object.Parent or not mark.part.Parent then clear(object)
+            else
+                local distance = camera and (mark.part.Position - camera.CFrame.Position).Magnitude or math.huge
+                mark.gui.Enabled = not menu.Visible and distance <= settings.lootRange
+                    and (mark.kind == "corpse" and settings.corpseEsp or mark.kind == "item" and settings.itemEsp)
+                mark.gui.AlwaysOnTop = settings.lootThrough
+                mark.label.TextSize = settings.lootTextSize
+                mark.label.TextColor3 = mark.kind == "corpse" and Color3.fromRGB(255, 156, 125) or Color3.fromRGB(115, 229, 185)
+                local name = object:GetAttribute("DisplayName")
+                name = type(name) == "string" and name or object.Name
+                mark.label.Text = (mark.kind == "corpse" and "CORPSE · " or "") .. name .. "\n" .. math.round(distance) .. " st"
+            end
+        end
+    end
+end
+local updateLootESP = initializeLootESP()
+
 local renderName = "Oktan_" .. HttpService:GenerateGUID(false)
 local unloaded = false
 local function unload()
@@ -2385,6 +2477,7 @@ RunService:BindToRenderStep(renderName, Enum.RenderPriority.Last.Value + 1, func
     local camera = workspace.CurrentCamera
     updateHud(dt)
     updateWinter(dt)
+    updateLootESP(dt, camera)
     updateCameraVisuals(dt, camera)
     applyTheme()
     ringStroke.Color = Color3.fromHSV(settings.fovHue / 360, settings.fovSaturation / 100, settings.fovValue / 100)
