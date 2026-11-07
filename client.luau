@@ -880,7 +880,12 @@ local inventoryBody = text(inventoryScroll, "", {
     TextXAlignment = Enum.TextXAlignment.Left, TextYAlignment = Enum.TextYAlignment.Top,
     TextWrapped = true, TextSize = 13, LineHeight = 1.4,
 })
+local corpseTargets = {}
 local function deltaInventory(owner)
+    if (type(owner) == "table" and owner.Corpse) then
+        local model = owner.Character
+        return model and (model:FindFirstChild("Inventory") or model:FindFirstChild("Contents") or model:FindFirstChild("Loot"))
+    end
     local replicatedPlayers = game:GetService("ReplicatedStorage"):FindFirstChild("Players")
     local record = replicatedPlayers and replicatedPlayers:FindFirstChild(owner.Name)
     return record and record:FindFirstChild("Inventory")
@@ -907,6 +912,15 @@ local function inspectNearest()
             local point, visible = camera:WorldToViewportPoint(root.Position)
             local distance = (Vector2.new(point.X, point.Y) - center).Magnitude
             if visible and point.Z > 0 and distance < best then nearest, best = other, distance end
+        end
+    end
+    for model, root in pairs(corpseTargets) do
+        if model.Parent and root.Parent and (root.Position - camera.CFrame.Position).Magnitude <= settings.lootRange then
+            local point, visible = camera:WorldToViewportPoint(root.Position)
+            local distance = (Vector2.new(point.X, point.Y) - center).Magnitude
+            if visible and point.Z > 0 and distance < best then
+                nearest, best = { Name = model.Name, Character = model, Parent = Players, Corpse = true }, distance
+            end
         end
     end
     inspectTarget = nearest
@@ -1088,8 +1102,8 @@ end
 local previewSignature
 local function updateInventoryCards()
     if not inspector.Visible then return end
-    if not inspectTarget or inspectTarget.Parent ~= Players then
-        inventoryNote.Text = "Aim at a player and press the inspect key."
+    if not inspectTarget or inspectTarget.Parent ~= Players or ((type(inspectTarget) == "table" and inspectTarget.Corpse) and not inspectTarget.Character.Parent) then
+        inventoryNote.Text = "Наведитесь на игрока или распознанный труп и нажмите Inspect."
         previewName.Text = "No target"
         for _, card in ipairs(cards) do card:Destroy() end
         table.clear(cards)
@@ -1116,8 +1130,11 @@ local function updateInventoryCards()
         rebuildPreview(inspectTarget.Character)
         previewSignature = currentPreview
     end
-    previewName.Text = inspectTarget.Name
+    previewName.Text = ((type(inspectTarget) == "table" and inspectTarget.Corpse) and "CORPSE · " or "") .. inspectTarget.Name
     inventoryNote.Text = string.format("%d items  |  Page %d / %d", #entries, inventoryPage, pagesCount)
+    if (type(inspectTarget) == "table" and inspectTarget.Corpse) and not deltaInventory(inspectTarget) then
+        inventoryNote.Text = "Лут недоступен клиенту. Показано только распознанное снаряжение."
+    end
     local current = table.concat(signature, "|")
     if inventorySignature == current then return end
     inventorySignature = current
@@ -2358,6 +2375,7 @@ local function initializeLootESP()
     local function clear(object)
         local mark = marks[object]
         if mark then mark.gui:Destroy(); marks[object] = nil end
+        corpseTargets[object] = nil
     end
     table.insert(cleanups, function()
         for object in pairs(marks) do clear(object) end
@@ -2369,11 +2387,6 @@ local function initializeLootESP()
         local scan = scanElapsed >= 2
         elapsed = 0
         if scan then scanElapsed = 0 end
-        if not settings.corpseEsp and not settings.itemEsp then
-            for object in pairs(marks) do clear(object) end
-            scanElapsed = 2
-            return
-        end
         if scan then
             local seen, count = {}, 0
             local function consider(object, kind)
@@ -2382,9 +2395,11 @@ local function initializeLootESP()
                 local humanoid = object:IsA("Model") and object:FindFirstChildOfClass("Humanoid")
                 if humanoid and humanoid.Health > 0 then return end
                 if humanoid then kind = "corpse" end
+                if kind == "item" and not settings.itemEsp then return end
                 local part = object:IsA("BasePart") and object or object.PrimaryPart or object:FindFirstChildWhichIsA("BasePart", true)
                 if not part then return end
                 seen[object], count = true, count + 1
+                if kind == "corpse" then corpseTargets[object] = part end
                 if not marks[object] then
                     local billboard = create("BillboardGui", gui, {
                         Name = "OktanLootMarker", Adornee = part, Size = UDim2.fromOffset(230, 42),
