@@ -2525,14 +2525,26 @@ local function initializeCameraVisuals()
         if next(joints) == nil then return nil end
         return root, joints
     end
+    -- C0 is used by Delta's alignment math. Release our presentation offsets
+    -- before its next camera update, then add them only to the completed idle pose.
+    local resetName = "OktanArmOffsetReset_" .. HttpService:GenerateGUID(false)
+    RunService:BindToRenderStep(resetName, Enum.RenderPriority.First.Value, function()
+        for _, entry in pairs(viewmodels) do
+            for joint, pose in pairs(entry.joints or {}) do
+                if pose.applied and joint.Parent and joint.C0 == pose.applied then joint.C0 = pose.original end
+                pose.applied = nil
+            end
+        end
+    end)
     table.insert(cleanups, function()
+        RunService:UnbindFromRenderStep(resetName)
         if characterConnection then characterConnection:Disconnect() end
         for object, entry in pairs(tracked) do restoreVisor(object, entry) end
         for model, entry in pairs(viewmodels) do restoreModel(model, entry) end
         restoreFov()
     end)
     return function(dt, camera, desiredFov)
-        applyFov(camera, not settings._ads and desiredFov or nil)
+        applyFov(camera, not settings._ads and not settings._cameraBusy and desiredFov or nil)
         settings._nativeFov = fov.native or (camera and camera.FieldOfView)
         -- Bounded initial discovery; streamed descendants are queued individually.
         local budget = 80
@@ -2603,7 +2615,7 @@ local function initializeCameraVisuals()
             if not model.Parent then
                 restoreModel(model, entry)
                 viewmodels[model] = nil
-            elseif entry.root and settings.viewmodel and not settings._ads and camera and model:IsDescendantOf(camera) then
+            elseif entry.root and settings.viewmodel and not settings._ads and not settings._cameraBusy and camera and model:IsDescendantOf(camera) then
                 settings._viewmodelStatus = "Delta arm/weapon joints active; FakeCamera excluded"
                 local worldOffset = camera.CFrame:VectorToWorldSpace(Vector3.new(settings.vmX / 100, settings.vmY / 100, settings.vmZ / 100))
                 local offset = entry.root.CFrame:VectorToObjectSpace(worldOffset)
@@ -2798,8 +2810,13 @@ RunService:BindToRenderStep(renderName, Enum.RenderPriority.Last.Value + 1, func
         return object and (object:GetAttribute("Aiming") == true or object:GetAttribute("ADS") == true or object:GetAttribute("IsAiming") == true)
     end
     settings._ads = aimingFlag(variables) or aimingFlag(player.Character) or aimingFlag(camera) or (weaponPresent and rightMouse) or false
+    local sprint = variables and variables:FindFirstChild("Sprinting")
+    local sprinting = (sprint and sprint:GetAttribute("Value") == true) or (focused and not menu.Visible and Input:GetFocusedTextBox() == nil and (Input:IsKeyDown(Enum.KeyCode.LeftShift) or Input:IsKeyDown(Enum.KeyCode.RightShift)))
+    if sprinting or settings._ads then renderState.cameraSettle = 0.2 else renderState.cameraSettle = math.max(0, (renderState.cameraSettle or 0) - dt) end
+    settings._cameraBusy = sprinting or settings._ads or (renderState.cameraSettle or 0) > 0
+    settings._sprinting = sprinting == true
     local zooming = camera and inputReady and settings.zoom and held("zoom")
-    updateCameraVisuals(dt, camera, (not settings._ads) and (zooming and settings.zoomFov or (settings.cameraFov and settings.cameraFovValue or nil)) or nil)
+    updateCameraVisuals(dt, camera, (not settings._cameraBusy) and (zooming and settings.zoomFov or (settings.cameraFov and settings.cameraFovValue or nil)) or nil)
     enforceOverrides()
     ring.Visible = camera ~= nil and inputReady and settings.aim and settings.ring
     if renderState.shownRingRadius ~= settings.radius then
