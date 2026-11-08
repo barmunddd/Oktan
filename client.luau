@@ -632,6 +632,19 @@ connect(raidReport.Activated, function()
                 for _, child in ipairs(object:GetChildren()) do scan(child, depth + 1) end
             end
         end
+        report.camera = { ads = settings._ads, nativeFov = settings._nativeFov, rawRmb = Input:IsMouseButtonPressed(Enum.UserInputType.MouseButton2), fov = workspace.CurrentCamera and workspace.CurrentCamera.FieldOfView, viewmodel = settings.viewmodel, viewmodelStatus = settings._viewmodelStatus }
+        report.cameraRig = {}
+        if workspace.CurrentCamera then
+            for _, object in ipairs(workspace.CurrentCamera:GetDescendants()) do
+                if #report.cameraRig >= 300 then break end
+                local row = { path = object:GetFullName(), class = object.ClassName }
+                if object:IsA("JointInstance") or object:IsA("WeldConstraint") then
+                    row.part0 = object.Part0 and object.Part0:GetFullName()
+                    row.part1 = object.Part1 and object.Part1:GetFullName()
+                end
+                table.insert(report.cameraRig, row)
+            end
+        end
         report.visuals = {}
         local function visualScan(root)
             if not root then return end
@@ -642,9 +655,9 @@ connect(raidReport.Activated, function()
                 end
             end
         end
-        visualScan(playerGui)
         visualScan(workspace.CurrentCamera)
         visualScan(player.Character)
+        visualScan(playerGui)
         scan(player, 0)
         if record then scan(record, 0) end
         writefile("Oktan-debug.json", HttpService:JSONEncode(report))
@@ -2428,6 +2441,13 @@ local updateCameraVisuals
 do
 local function initializeCameraVisuals()
     local tracked, viewmodels = {}, {}
+    local fov = {}
+    local function restoreFov()
+        if fov.camera and fov.camera.Parent and fov.camera.FieldOfView == fov.applied then
+            fov.camera.FieldOfView = fov.native
+        end
+        table.clear(fov)
+    end
     local vegetation, pending, cursor = {}, {}, 1
     local foliageNames = { leaf = "noLeaves", leaves = "noLeaves", foliage = "noLeaves",
         grass = "noGrass", grasspatch = "noGrass", tallgrass = "noGrass" }
@@ -2462,10 +2482,25 @@ local function initializeCameraVisuals()
         end
         entry.applied = nil
     end
+    local function isolatedModel(model)
+        -- A full avatar or an externally welded model is not an independent viewmodel.
+        if model:FindFirstChild("LeftFoot", true) or model:FindFirstChild("Left Leg", true) then return false end
+        if player.Character and (model == player.Character or model:IsDescendantOf(player.Character)) then return false end
+        for _, item in ipairs(model:GetDescendants()) do
+            if item:IsA("JointInstance") or item:IsA("WeldConstraint") then
+                if (item.Part0 and not item.Part0:IsDescendantOf(model)) or (item.Part1 and not item.Part1:IsDescendantOf(model)) then return false end
+            elseif item:IsA("BasePart") then
+                for _, part in ipairs(item:GetConnectedParts(true)) do
+                    if not part:IsDescendantOf(model) then return false end
+                end
+            end
+        end
+        return true
+    end
     local function restoreModel(model, entry)
         if entry.applied and model.Parent then
             local current = model:GetPivot()
-            model:PivotTo(current == entry.applied and entry.original or current - entry.offset)
+            if current == entry.applied then model:PivotTo(entry.original) end
         end
         entry.applied = nil
     end
@@ -2474,16 +2509,23 @@ local function initializeCameraVisuals()
     local resetName = "OktanViewmodelReset_" .. HttpService:GenerateGUID(false)
     RunService:BindToRenderStep(resetName, Enum.RenderPriority.First.Value, function()
         for model, entry in pairs(viewmodels) do restoreModel(model, entry) end
-        override("Zoom", workspace.CurrentCamera, "FieldOfView", nil)
+        restoreFov()
     end)
     table.insert(cleanups, function()
         RunService:UnbindFromRenderStep(resetName)
         if characterConnection then characterConnection:Disconnect() end
         for object, entry in pairs(tracked) do restoreVisor(object, entry) end
         for model, entry in pairs(viewmodels) do restoreModel(model, entry) end
-        override("Zoom", workspace.CurrentCamera, "FieldOfView", nil)
+        restoreFov()
     end)
-    return function(dt, camera)
+    return function(dt, camera, desiredFov)
+        restoreFov()
+        settings._nativeFov = camera and camera.FieldOfView
+        -- Release happens before camera animation; apply only the final non-ADS presentation.
+        if camera and desiredFov and not settings._ads then
+            fov.camera, fov.native, fov.applied = camera, camera.FieldOfView, desiredFov
+            camera.FieldOfView = desiredFov
+        end
         -- Bounded initial discovery; streamed descendants are queued individually.
         local budget = 80
         while cursor <= #pending and budget > 0 do
@@ -2530,7 +2572,12 @@ local function initializeCameraVisuals()
                             if parent:IsA("Model") and modelNames[normalized(parent)] then nested = true; break end
                             parent = parent.Parent
                         end
-                        if not nested then viewmodels[object] = viewmodels[object] or {} end
+                        if not nested then
+                            local entry = viewmodels[object] or {}
+                            entry.safe = isolatedModel(object)
+                            if not entry.safe then restoreModel(object, entry) end
+                            viewmodels[object] = entry
+                        end
                     end
                 end
             end
@@ -2543,9 +2590,12 @@ local function initializeCameraVisuals()
                 object[entry.property] = entry.applied
             else restoreVisor(object, entry) end
         end
+        settings._viewmodelStatus = "No isolated viewmodel found"
         for model, entry in pairs(viewmodels) do
+            if not entry.safe then settings._viewmodelStatus = "Skipped full-body or connected rig" end
             if not model.Parent then viewmodels[model] = nil
-            elseif settings.viewmodel and not settings._ads and camera and model:IsDescendantOf(camera) then
+            elseif entry.safe and settings.viewmodel and not settings._ads and camera and model:IsDescendantOf(camera) then
+                settings._viewmodelStatus = "Independent viewmodel offset active"
                 local pivot = model:GetPivot()
                 if entry.applied and pivot == entry.applied then pivot = entry.original end
                 entry.original = pivot
@@ -2724,10 +2774,15 @@ RunService:BindToRenderStep(renderName, Enum.RenderPriority.Last.Value + 1, func
     local record = records and records:FindFirstChild(player.Name)
     local status = record and record:FindFirstChild("Status")
     local variables = status and status:FindFirstChild("GameplayVariables")
-    settings._ads = variables and variables:GetAttribute("Aiming") == true or false
-    updateCameraVisuals(dt, camera)
+    local equipped = variables and variables:FindFirstChild("EquippedTool")
+    local weaponPresent = (equipped and equipped.Value ~= nil) or (variables and (variables:GetAttribute("EquipId") or 0) ~= 0) or (player.Character and heldItem(player.Character) ~= nil)
+    local rightMouse = focused and not menu.Visible and Input:GetFocusedTextBox() == nil and Input:IsMouseButtonPressed(Enum.UserInputType.MouseButton2)
+    local function aimingFlag(object)
+        return object and (object:GetAttribute("Aiming") == true or object:GetAttribute("ADS") == true or object:GetAttribute("IsAiming") == true)
+    end
+    settings._ads = aimingFlag(variables) or aimingFlag(player.Character) or aimingFlag(camera) or (weaponPresent and rightMouse) or false
     local zooming = camera and inputReady and settings.zoom and held("zoom")
-    override("Zoom", camera, "FieldOfView", (not settings._ads) and (zooming and settings.zoomFov or (settings.cameraFov and settings.cameraFovValue or nil)) or nil)
+    updateCameraVisuals(dt, camera, (not settings._ads) and (zooming and settings.zoomFov or (settings.cameraFov and settings.cameraFovValue or nil)) or nil)
     enforceOverrides()
     ring.Visible = camera ~= nil and inputReady and settings.aim and settings.ring
     if renderState.shownRingRadius ~= settings.radius then
