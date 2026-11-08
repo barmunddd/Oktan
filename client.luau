@@ -2443,10 +2443,29 @@ local function initializeCameraVisuals()
     local tracked, viewmodels = {}, {}
     local fov = {}
     local function restoreFov()
+        if fov.connection then fov.connection:Disconnect() end
         if fov.camera and fov.camera.Parent and fov.camera.FieldOfView == fov.applied then
             fov.camera.FieldOfView = fov.native
         end
         table.clear(fov)
+    end
+    local function applyFov(camera, desired)
+        if fov.camera ~= camera or not desired then restoreFov() end
+        if not camera or not desired then return end
+        if not fov.camera then
+            fov.camera, fov.native = camera, camera.FieldOfView
+            fov.connection = camera:GetPropertyChangedSignal("FieldOfView"):Connect(function()
+                if not fov.writing and fov.camera == camera and camera.FieldOfView ~= fov.applied then
+                    fov.native = camera.FieldOfView
+                end
+            end)
+        end
+        fov.applied = desired
+        if camera.FieldOfView ~= desired then
+            fov.writing = true
+            camera.FieldOfView = desired
+            fov.writing = false
+        end
     end
     local vegetation, pending, cursor = {}, {}, 1
     local foliageNames = { leaf = "noLeaves", leaves = "noLeaves", foliage = "noLeaves",
@@ -2484,9 +2503,13 @@ local function initializeCameraVisuals()
     end
     local function isolatedModel(model)
         -- A full avatar or an externally welded model is not an independent viewmodel.
+        if model:FindFirstChildOfClass("Humanoid") or model:FindFirstChild("UpperTorso", true)
+            or model:FindFirstChild("Torso", true) or model:FindFirstChild("Head", true) then return false end
         if model:FindFirstChild("LeftFoot", true) or model:FindFirstChild("Left Leg", true) then return false end
         if player.Character and (model == player.Character or model:IsDescendantOf(player.Character)) then return false end
         for _, item in ipairs(model:GetDescendants()) do
+            local name = string.lower(item.Name)
+            if item:IsA("Accessory") or item:IsA("Bone") or name:find("ghillie", 1, true) then return false end
             if item:IsA("JointInstance") or item:IsA("WeldConstraint") then
                 if (item.Part0 and not item.Part0:IsDescendantOf(model)) or (item.Part1 and not item.Part1:IsDescendantOf(model)) then return false end
             elseif item:IsA("BasePart") then
@@ -2509,7 +2532,6 @@ local function initializeCameraVisuals()
     local resetName = "OktanViewmodelReset_" .. HttpService:GenerateGUID(false)
     RunService:BindToRenderStep(resetName, Enum.RenderPriority.First.Value, function()
         for model, entry in pairs(viewmodels) do restoreModel(model, entry) end
-        restoreFov()
     end)
     table.insert(cleanups, function()
         RunService:UnbindFromRenderStep(resetName)
@@ -2519,13 +2541,8 @@ local function initializeCameraVisuals()
         restoreFov()
     end)
     return function(dt, camera, desiredFov)
-        restoreFov()
-        settings._nativeFov = camera and camera.FieldOfView
-        -- Release happens before camera animation; apply only the final non-ADS presentation.
-        if camera and desiredFov and not settings._ads then
-            fov.camera, fov.native, fov.applied = camera, camera.FieldOfView, desiredFov
-            camera.FieldOfView = desiredFov
-        end
+        applyFov(camera, not settings._ads and desiredFov or nil)
+        settings._nativeFov = fov.native or (camera and camera.FieldOfView)
         -- Bounded initial discovery; streamed descendants are queued individually.
         local budget = 80
         while cursor <= #pending and budget > 0 do
