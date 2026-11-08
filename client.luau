@@ -2501,40 +2501,31 @@ local function initializeCameraVisuals()
         end
         entry.applied = nil
     end
-    local function isolatedModel(model)
-        -- A full avatar or an externally welded model is not an independent viewmodel.
-        if model:FindFirstChildOfClass("Humanoid") or model:FindFirstChild("UpperTorso", true)
-            or model:FindFirstChild("Torso", true) or model:FindFirstChild("Head", true) then return false end
-        if model:FindFirstChild("LeftFoot", true) or model:FindFirstChild("Left Leg", true) then return false end
-        if player.Character and (model == player.Character or model:IsDescendantOf(player.Character)) then return false end
-        for _, item in ipairs(model:GetDescendants()) do
-            local name = string.lower(item.Name)
-            if item:IsA("Accessory") or item:IsA("Bone") or name:find("ghillie", 1, true) then return false end
-            if item:IsA("JointInstance") or item:IsA("WeldConstraint") then
-                if (item.Part0 and not item.Part0:IsDescendantOf(model)) or (item.Part1 and not item.Part1:IsDescendantOf(model)) then return false end
-            elseif item:IsA("BasePart") then
-                for _, part in ipairs(item:GetConnectedParts(true)) do
-                    if not part:IsDescendantOf(model) then return false end
+    local function restoreModel(model, entry)
+        for joint, pose in pairs(entry.joints or {}) do
+            if joint.Parent and joint.C0 == pose.applied then joint.C0 = pose.original end
+        end
+        entry.joints = {}
+    end
+    local function bindRig(model)
+        local root = model:FindFirstChild("HumanoidRootPart")
+        local fakeCamera = model:FindFirstChild("FakeCamera")
+        local item = model:FindFirstChild("Item")
+        if not root or not fakeCamera or not root:IsA("BasePart") then return nil end
+        local joints = {}
+        for _, joint in ipairs(root:GetChildren()) do
+            if joint:IsA("Motor6D") and joint.Part0 == root and joint.Part1 and joint.Part1 ~= fakeCamera then
+                local part = joint.Part1
+                if (part.Parent == model and (part.Name == "LeftUpperArm" or part.Name == "RightUpperArm"))
+                    or (item and part.Name == "ItemRoot" and part:IsDescendantOf(item)) then
+                    joints[joint] = {}
                 end
             end
         end
-        return true
+        if next(joints) == nil then return nil end
+        return root, joints
     end
-    local function restoreModel(model, entry)
-        if entry.applied and model.Parent then
-            local current = model:GetPivot()
-            if current == entry.applied then model:PivotTo(entry.original) end
-        end
-        entry.applied = nil
-    end
-    -- Remove our previous offset before the game's camera/weapon animation runs.
-    -- Otherwise a relative animation can use our shifted pose as its next base.
-    local resetName = "OktanViewmodelReset_" .. HttpService:GenerateGUID(false)
-    RunService:BindToRenderStep(resetName, Enum.RenderPriority.First.Value, function()
-        for model, entry in pairs(viewmodels) do restoreModel(model, entry) end
-    end)
     table.insert(cleanups, function()
-        RunService:UnbindFromRenderStep(resetName)
         if characterConnection then characterConnection:Disconnect() end
         for object, entry in pairs(tracked) do restoreVisor(object, entry) end
         for model, entry in pairs(viewmodels) do restoreModel(model, entry) end
@@ -2591,8 +2582,8 @@ local function initializeCameraVisuals()
                         end
                         if not nested then
                             local entry = viewmodels[object] or {}
-                            entry.safe = isolatedModel(object)
-                            if not entry.safe then restoreModel(object, entry) end
+                            restoreModel(object, entry)
+                            entry.root, entry.joints = bindRig(object)
                             viewmodels[object] = entry
                         end
                     end
@@ -2607,20 +2598,29 @@ local function initializeCameraVisuals()
                 object[entry.property] = entry.applied
             else restoreVisor(object, entry) end
         end
-        settings._viewmodelStatus = "No isolated viewmodel found"
+        settings._viewmodelStatus = "No supported Delta arm rig found"
         for model, entry in pairs(viewmodels) do
-            if not entry.safe then settings._viewmodelStatus = "Skipped full-body or connected rig" end
-            if not model.Parent then viewmodels[model] = nil
-            elseif entry.safe and settings.viewmodel and not settings._ads and camera and model:IsDescendantOf(camera) then
-                settings._viewmodelStatus = "Independent viewmodel offset active"
-                local pivot = model:GetPivot()
-                if entry.applied and pivot == entry.applied then pivot = entry.original end
-                entry.original = pivot
-                local offset = camera.CFrame:VectorToWorldSpace(Vector3.new(settings.vmX / 100, settings.vmY / 100, settings.vmZ / 100))
-                entry.offset = offset
-                entry.applied = pivot + offset
-                model:PivotTo(entry.applied)
-            else restoreModel(model, entry) end
+            if not model.Parent then
+                restoreModel(model, entry)
+                viewmodels[model] = nil
+            elseif entry.root and settings.viewmodel and not settings._ads and camera and model:IsDescendantOf(camera) then
+                settings._viewmodelStatus = "Delta arm/weapon joints active; FakeCamera excluded"
+                local worldOffset = camera.CFrame:VectorToWorldSpace(Vector3.new(settings.vmX / 100, settings.vmY / 100, settings.vmZ / 100))
+                local offset = entry.root.CFrame:VectorToObjectSpace(worldOffset)
+                for joint, pose in pairs(entry.joints or {}) do
+                    if joint.Parent and joint.Part0 == entry.root and joint.Part1 and joint.Part1:IsDescendantOf(model) then
+                        if pose.applied == nil or joint.C0 ~= pose.applied then pose.original = joint.C0 end
+                        pose.applied = pose.original + offset
+                        joint.C0 = pose.applied
+                    end
+                end
+            else
+                -- Keep bindings while releasing only our C0 offsets for ADS/disable.
+                for joint, pose in pairs(entry.joints or {}) do
+                    if pose.applied and joint.Parent and joint.C0 == pose.applied then joint.C0 = pose.original end
+                    pose.applied = nil
+                end
+            end
         end
     end
 end
