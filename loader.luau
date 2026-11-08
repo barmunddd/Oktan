@@ -42,7 +42,7 @@ if not decoded or type(result) ~= "table" or result.valid ~= true then
 end
 stage("Key accepted. Downloading client...")
 local fetched, source = pcall(function()
-    return game:HttpGet("https://raw.githubusercontent.com/barmunddd/Oktan/506314a4c71a39eb6e7117d480fa31444e48401a/client.luau")
+    return game:HttpGet("https://raw.githubusercontent.com/barmunddd/Oktan/f610d3b8dec03b8e7e5a040d933912e2daebabf9/client.luau")
 end)
 if not fetched or type(source) ~= "string" or #source == 0 then
     error("Oktan: client download failed", 0)
