@@ -224,9 +224,11 @@ local function saveConfig()
     local serial = changeSerial
     local nextRevision = revision + 1
     local ok = pcall(function()
+        local persistedSettings = {}
+        for key in pairs(schema) do persistedSettings[key] = settings[key] end
         local content = HttpService:JSONEncode({
             version = 5, revision = nextRevision,
-            settings = settings, bindings = bindings, friends = friendNames,
+            settings = persistedSettings, bindings = bindings, friends = friendNames,
         })
         -- Alternate slots preserve the previous valid save if a write is interrupted.
         writefile(filePrefix .. (nextRevision % 2 == 0 and "a" or "b") .. ".json", content)
@@ -633,6 +635,7 @@ connect(raidReport.Activated, function()
             end
         end
         report.camera = { ads = settings._ads, nativeFov = settings._nativeFov, rawRmb = Input:IsMouseButtonPressed(Enum.UserInputType.MouseButton2), fov = workspace.CurrentCamera and workspace.CurrentCamera.FieldOfView, viewmodel = settings.viewmodel, viewmodelStatus = settings._viewmodelStatus }
+        report.cameraTrace = settings._cameraTrace
         report.cameraRig = {}
         if workspace.CurrentCamera then
             for _, object in ipairs(workspace.CurrentCamera:GetDescendants()) do
@@ -2442,28 +2445,42 @@ do
 local function initializeCameraVisuals()
     local tracked, viewmodels = {}, {}
     local fov = {}
-    local function restoreFov()
+    local traceElapsed = 0
+    settings._cameraTrace = {}
+    local function adsInput()
+        return settings._ads or (focused and not menu.Visible and Input:GetFocusedTextBox() == nil and Input:IsMouseButtonPressed(Enum.UserInputType.MouseButton2))
+    end
+    local function restoreFov(preservePresentation)
         if fov.connection then fov.connection:Disconnect() end
-        if fov.camera and fov.camera.Parent and fov.camera.FieldOfView == fov.applied then
+        if not preservePresentation and fov.camera and fov.camera.Parent and fov.camera.FieldOfView == fov.applied then
             fov.camera.FieldOfView = fov.native
         end
         table.clear(fov)
     end
-    local function applyFov(camera, desired)
-        if fov.camera ~= camera or not desired then restoreFov() end
+    local function applyFov(camera, desired, dt)
+        if fov.camera ~= camera or not desired then restoreFov(adsInput()) end
         if not camera or not desired then return end
         if not fov.camera then
             fov.camera, fov.native = camera, camera.FieldOfView
             fov.connection = camera:GetPropertyChangedSignal("FieldOfView"):Connect(function()
                 if not fov.writing and fov.camera == camera and camera.FieldOfView ~= fov.applied then
                     fov.native = camera.FieldOfView
+                    -- Keep equip/sprint FOV writes out of the rendered projection.
+                    -- ADS relinquishes ownership immediately from the physical input.
+                    if not adsInput() and fov.applied then
+                        fov.writing = true
+                        camera.FieldOfView = fov.applied
+                        fov.writing = false
+                    end
                 end
             end)
         end
-        fov.applied = desired
-        if camera.FieldOfView ~= desired then
+        local previous = fov.applied or camera.FieldOfView
+        fov.applied = previous + (desired - previous) * math.min(1, dt / 0.12)
+        if math.abs(fov.applied - desired) < 0.01 then fov.applied = desired end
+        if camera.FieldOfView ~= fov.applied then
             fov.writing = true
-            camera.FieldOfView = desired
+            camera.FieldOfView = fov.applied
             fov.writing = false
         end
     end
@@ -2483,6 +2500,7 @@ local function initializeCameraVisuals()
         for object, entry in pairs(vegetation) do restoreVegetation(object, entry) end
     end)
     local cameraLast, characterLast, characterConnection, scanTime = nil, nil, nil, 1
+    local cameraConnection
     local visorNames = { visor = true, visoroverlay = true, helmetvisor = true,
         facevisor = true, faceplate = true, visoreffect = true }
     local modelNames = { viewmodel = true, viewmodels = true, arms = true, firstperson = true }
@@ -2503,7 +2521,7 @@ local function initializeCameraVisuals()
     end
     local function restoreModel(model, entry)
         for joint, pose in pairs(entry.joints or {}) do
-            if joint.Parent and joint.C0 == pose.applied then joint.C0 = pose.original end
+            if joint.Parent and joint.Transform == pose.applied then joint.Transform = pose.original end
         end
         entry.joints = {}
     end
@@ -2525,27 +2543,58 @@ local function initializeCameraVisuals()
         if next(joints) == nil then return nil end
         return root, joints
     end
-    -- C0 is used by Delta's alignment math. Release our presentation offsets
-    -- before its next camera update, then add them only to the completed idle pose.
-    local resetName = "OktanArmOffsetReset_" .. HttpService:GenerateGUID(false)
-    RunService:BindToRenderStep(resetName, Enum.RenderPriority.First.Value, function()
+    local blend = 0
+    connect(RunService.PreAnimation, function()
         for _, entry in pairs(viewmodels) do
             for joint, pose in pairs(entry.joints or {}) do
-                if pose.applied and joint.Parent and joint.C0 == pose.applied then joint.C0 = pose.original end
+                if pose.applied and joint.Parent and joint.Transform == pose.applied then joint.Transform = pose.original end
                 pose.applied = nil
             end
         end
     end)
+    connect(RunService.PreSimulation, function(dt)
+        local camera = workspace.CurrentCamera
+        local target = settings.viewmodel and not adsInput() and 1 or 0
+        blend += (target - blend) * math.min(1, dt / 0.1)
+        if math.abs(blend - target) < 0.001 then blend = target end
+        for model, entry in pairs(viewmodels) do
+            if entry.root and entry.root.Parent and model.Parent and camera and model:IsDescendantOf(camera) then
+                local worldOffset = camera.CFrame:VectorToWorldSpace(Vector3.new(settings.vmX / 100, settings.vmY / 100, settings.vmZ / 100)) * blend
+                local rootOffset = entry.root.CFrame:VectorToObjectSpace(worldOffset)
+                for joint, pose in pairs(entry.joints or {}) do
+                    if joint.Parent and joint.Part0 == entry.root and joint.Part1 and joint.Part1:IsDescendantOf(model) then
+                        if pose.applied and joint.Transform == pose.applied then joint.Transform = pose.original end
+                        pose.original = joint.Transform
+                        if blend > 0 then
+                            pose.applied = pose.original + joint.C0:VectorToObjectSpace(rootOffset)
+                            joint.Transform = pose.applied
+                        else pose.applied = nil end
+                    end
+                end
+            end
+        end
+    end)
     table.insert(cleanups, function()
-        RunService:UnbindFromRenderStep(resetName)
+        if cameraConnection then cameraConnection:Disconnect() end
         if characterConnection then characterConnection:Disconnect() end
         for object, entry in pairs(tracked) do restoreVisor(object, entry) end
         for model, entry in pairs(viewmodels) do restoreModel(model, entry) end
         restoreFov()
     end)
     return function(dt, camera, desiredFov)
-        applyFov(camera, not settings._ads and not settings._cameraBusy and desiredFov or nil)
+        applyFov(camera, not adsInput() and desiredFov or nil, dt)
         settings._nativeFov = fov.native or (camera and camera.FieldOfView)
+        traceElapsed += dt
+        if traceElapsed >= 0.1 then
+            traceElapsed = 0
+            local trace = settings._cameraTrace
+            if #trace >= 240 then table.remove(trace, 1) end
+            table.insert(trace, { time = os.clock(), fov = camera and camera.FieldOfView,
+                native = settings._nativeFov, requested = desiredFov, ads = settings._ads,
+                rmb = Input:IsMouseButtonPressed(Enum.UserInputType.MouseButton2),
+                shift = Input:IsKeyDown(Enum.KeyCode.LeftShift) or Input:IsKeyDown(Enum.KeyCode.RightShift),
+                equip = settings._equipId, offsetBlend = blend })
+        end
         -- Bounded initial discovery; streamed descendants are queued individually.
         local budget = 80
         while cursor <= #pending and budget > 0 do
@@ -2582,6 +2631,8 @@ local function initializeCameraVisuals()
                 for model, entry in pairs(viewmodels) do restoreModel(model, entry) end
                 table.clear(viewmodels)
                 cameraLast = camera
+                if cameraConnection then cameraConnection:Disconnect() end
+                cameraConnection = camera and camera.DescendantAdded:Connect(function() scanTime = 1 end)
             end
             if camera then
                 for _, object in ipairs(camera:GetDescendants()) do
@@ -2615,23 +2666,8 @@ local function initializeCameraVisuals()
             if not model.Parent then
                 restoreModel(model, entry)
                 viewmodels[model] = nil
-            elseif entry.root and settings.viewmodel and not settings._ads and not settings._cameraBusy and camera and model:IsDescendantOf(camera) then
-                settings._viewmodelStatus = "Delta arm/weapon joints active; FakeCamera excluded"
-                local worldOffset = camera.CFrame:VectorToWorldSpace(Vector3.new(settings.vmX / 100, settings.vmY / 100, settings.vmZ / 100))
-                local offset = entry.root.CFrame:VectorToObjectSpace(worldOffset)
-                for joint, pose in pairs(entry.joints or {}) do
-                    if joint.Parent and joint.Part0 == entry.root and joint.Part1 and joint.Part1:IsDescendantOf(model) then
-                        if pose.applied == nil or joint.C0 ~= pose.applied then pose.original = joint.C0 end
-                        pose.applied = pose.original + offset
-                        joint.C0 = pose.applied
-                    end
-                end
-            else
-                -- Keep bindings while releasing only our C0 offsets for ADS/disable.
-                for joint, pose in pairs(entry.joints or {}) do
-                    if pose.applied and joint.Parent and joint.C0 == pose.applied then joint.C0 = pose.original end
-                    pose.applied = nil
-                end
+            elseif entry.root then
+                settings._viewmodelStatus = "Delta animation Transform layer; C0 and FakeCamera unchanged"
             end
         end
     end
@@ -2803,6 +2839,7 @@ RunService:BindToRenderStep(renderName, Enum.RenderPriority.Last.Value + 1, func
     local record = records and records:FindFirstChild(player.Name)
     local status = record and record:FindFirstChild("Status")
     local variables = status and status:FindFirstChild("GameplayVariables")
+    settings._equipId = variables and variables:GetAttribute("EquipId")
     local equipped = variables and variables:FindFirstChild("EquippedTool")
     local weaponPresent = (equipped and equipped.Value ~= nil) or (variables and (variables:GetAttribute("EquipId") or 0) ~= 0) or (player.Character and heldItem(player.Character) ~= nil)
     local rightMouse = focused and not menu.Visible and Input:GetFocusedTextBox() == nil and Input:IsMouseButtonPressed(Enum.UserInputType.MouseButton2)
@@ -2810,13 +2847,8 @@ RunService:BindToRenderStep(renderName, Enum.RenderPriority.Last.Value + 1, func
         return object and (object:GetAttribute("Aiming") == true or object:GetAttribute("ADS") == true or object:GetAttribute("IsAiming") == true)
     end
     settings._ads = aimingFlag(variables) or aimingFlag(player.Character) or aimingFlag(camera) or (weaponPresent and rightMouse) or false
-    local sprint = variables and variables:FindFirstChild("Sprinting")
-    local sprinting = (sprint and sprint:GetAttribute("Value") == true) or (focused and not menu.Visible and Input:GetFocusedTextBox() == nil and (Input:IsKeyDown(Enum.KeyCode.LeftShift) or Input:IsKeyDown(Enum.KeyCode.RightShift)))
-    if sprinting or settings._ads then renderState.cameraSettle = 0.2 else renderState.cameraSettle = math.max(0, (renderState.cameraSettle or 0) - dt) end
-    settings._cameraBusy = sprinting or settings._ads or (renderState.cameraSettle or 0) > 0
-    settings._sprinting = sprinting == true
     local zooming = camera and inputReady and settings.zoom and held("zoom")
-    updateCameraVisuals(dt, camera, (not settings._cameraBusy) and (zooming and settings.zoomFov or (settings.cameraFov and settings.cameraFovValue or nil)) or nil)
+    updateCameraVisuals(dt, camera, (not settings._ads) and (zooming and settings.zoomFov or (settings.cameraFov and settings.cameraFovValue or nil)) or nil)
     enforceOverrides()
     ring.Visible = camera ~= nil and inputReady and settings.aim and settings.ring
     if renderState.shownRingRadius ~= settings.radius then
