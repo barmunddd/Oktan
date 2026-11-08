@@ -23,6 +23,8 @@ end
 
 -- Every exposed setting has its own description, bounds and keyboard actions.
 local definitions = {
+    { "noLeaves", false, "No Leaves", "Скрывает распознанные части листвы. Стволы и коллизия остаются.", "Мир" },
+    { "noGrass", false, "No Grass", "Скрывает распознанные модели травы. Не влияет на коллизию.", "Мир" },
     { "corpseEsp", false, "Corpses", "Показывать распознанные трупы. Требует проверки структуры игры.", "ESP" },
     { "itemEsp", false, "Items", "Показывать предметы в распознанных папках лута.", "ESP" },
     { "lootThrough", false, "Loot Through Walls", "Показывать лут и трупы сквозь стены.", "ESP" },
@@ -122,7 +124,7 @@ for _, key in ipairs(Enum.KeyCode:GetEnumItems()) do
     end
 end
 local legacyPrefix = "DeltaClient-" .. tostring(game.PlaceId) .. "-"
-local filePrefix = "Oktan-" .. tostring(game.PlaceId) .. "-"
+local filePrefix = "Oktan-shared-"
 local canSave = type(writefile) == "function" and type(readfile) == "function"
 local revision, dirty, lastChange, saving = 0, false, 0, false
 local configStatus = canSave and "Конфиг готов" or "Файловые функции недоступны"
@@ -186,7 +188,22 @@ if canSave then
         end
         return newest
     end
-    local newest = readConfig(filePrefix) or readConfig(legacyPrefix)
+    local newest = readConfig(filePrefix)
+    if not newest then
+        newest = readConfig("Oktan-" .. tostring(game.PlaceId) .. "-") or readConfig(legacyPrefix)
+        -- Migrate the newest local Oktan place config when entering a different place first.
+        if type(listfiles) == "function" then
+            local ok, files = pcall(listfiles, "")
+            if ok then
+                for _, path in ipairs(files) do
+                    local prefix = path:match("^(.*Oktan%-%d+%-)[ab]%.json$")
+                    local candidate = prefix and readConfig(prefix)
+                    if candidate and (not newest or candidate.revision > newest.revision) then newest = candidate end
+                end
+            end
+        end
+        if newest then dirty, lastChange = true, os.clock() end
+    end
     if newest then
         settings, bindings, revision = newest.settings, newest.bindings, newest.revision
         friendNames = newest.friends
@@ -244,6 +261,7 @@ local function connect(signal, callback)
     table.insert(connections, connection)
     return connection
 end
+if player.OnTeleport then connect(player.OnTeleport, function() saveConfig() end) end
 local function stroke(parent, color, thickness)
     return create("UIStroke", parent, {
         ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
@@ -860,14 +878,25 @@ local function getRaidKills()
         if stat and (stat:IsA("IntValue") or stat:IsA("NumberValue")) then value = stat.Value end
     end
     if type(value) == "number" and value >= 0 and value < 100000 and value % 1 == 0 then return value end
+    local status = record and record:FindFirstChild("Status")
+    local journey = status and status:FindFirstChild("Journey")
+    local statistics = journey and journey:FindFirstChild("Statistics")
+    local total = statistics and statistics:GetAttribute("Kills")
+    if type(total) == "number" and total >= 0 and total % 1 == 0 then
+        if raid.source ~= statistics or not raid.baseline or total < raid.baseline then
+            raid.source, raid.baseline = statistics, total
+        end
+        raid.session = true
+        return total - raid.baseline
+    end
     return nil
 end
 local function updateIslandHeader()
-    local kills = getRaidKills()
-    if kills ~= nil then raid.kills = kills end
+    raid.session = false
+    raid.kills = getRaidKills()
     islandHeader.Text = ""
     islandClock.Text = DateTime.now():FormatLocalTime("HH:mm:ss", "en-us")
-    islandKills.Text = raid.kills == nil and "KILLS  —" or "KILLS  " .. tostring(raid.kills)
+    islandKills.Text = raid.kills == nil and "KILLS  —" or (raid.session and "SESSION  " or "KILLS  ") .. tostring(raid.kills)
     islandChevron.Text = islandExpanded and "-" or "+"
     islandBrand.TextColor3 = palette.accent
 end
@@ -1275,7 +1304,7 @@ local function updateHud(dt)
     if hudElapsed >= 0.2 then
     hudElapsed = 0
     local sections = {}
-    if raid.kills ~= nil then table.insert(sections, "Raid kills: " .. tostring(raid.kills)) end
+    if raid.kills ~= nil then table.insert(sections, (raid.session and "Session kills: " or "Raid kills: ") .. tostring(raid.kills)) end
     if raid.extracted ~= nil then
         table.insert(sections, "Extracted")
         table.insert(sections, #raid.extracted > 0 and table.concat(raid.extracted, "\n") or "No items")
@@ -1315,12 +1344,12 @@ describe(search, "Ищет по всем разделам, названиям и
 local treeGroups = {
     ["Наведение"] = { "Наведение", "Цели и проверки", "Область и плавность" },
     ESP = { "Общее", "Подписи", "Геометрия", "Цвет и оформление", "Loot" },
-    ["Мир"] = { "Освещение" },
+    ["Мир"] = { "Освещение", "Vegetation" },
     ["Камера"] = { "Зум", "Прицел", "Vision", "Viewmodel" },
     ["Бинды"] = { "Инвентарь", "Dynamic Island", "Управление", "Назначения функций" },
     ["Настройки"] = { "Оформление", "Клиент" },
 }
-local settingGroup = { corpseEsp = "Loot", itemEsp = "Loot", lootThrough = "Loot", lootRange = "Loot", lootTextSize = "Loot",
+local settingGroup = { noLeaves = "Vegetation", noGrass = "Vegetation", corpseEsp = "Loot", itemEsp = "Loot", lootThrough = "Loot", lootRange = "Loot", lootTextSize = "Loot",
     noVisor = "Vision", cameraFov = "Vision", cameraFovValue = "Vision",
     viewmodel = "Viewmodel", vmX = "Viewmodel", vmY = "Viewmodel", vmZ = "Viewmodel", sticky = "Наведение", noFog = "Освещение", bubbles = "Оформление", snow = "Оформление", snowDrifts = "Оформление", friendHats = "Оформление", espFps = "Цвет и оформление", adaptiveText = "Подписи",
     aim = "Наведение", aimPlayers = "Цели и проверки", aimDummies = "Цели и проверки",
@@ -1528,6 +1557,28 @@ connect(friendAdd.Activated, function()
         return
     end
     friendNames[name] = not friendNames[name] or nil
+    if friendNames[name] then
+        local other = Players:FindFirstChild(friendInput.Text:match("^%s*(.-)%s*$"))
+        if not other then
+            for _, candidate in ipairs(Players:GetPlayers()) do if string.lower(candidate.Name) == name then other = candidate; break end end
+        end
+        if other and other.Character then
+            local shine = create("Highlight", gui, { Adornee = other.Character, FillColor = Color3.fromRGB(160, 240, 255), OutlineColor = Color3.fromRGB(245, 255, 255), FillTransparency = 0.2, OutlineTransparency = 0 })
+            local jewel = create("BillboardGui", gui, { Adornee = other.Character:FindFirstChild("Head"), Size = UDim2.fromOffset(70, 70), StudsOffsetWorldSpace = Vector3.new(0, 3, 0), AlwaysOnTop = true })
+            local diamond = create("Frame", jewel, { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromOffset(24, 24), Rotation = 45, BackgroundColor3 = Color3.fromRGB(180, 245, 255), BorderSizePixel = 0 })
+            local started = os.clock()
+            local pulse
+            pulse = RunService.RenderStepped:Connect(function()
+                local age = os.clock() - started
+                if age > 2.5 or not shine.Parent then pulse:Disconnect(); shine:Destroy(); jewel:Destroy(); return end
+                shine.FillTransparency = math.clamp(0.35 + age / 4 + math.sin(age * 12) * 0.15, 0, 1)
+                shine.OutlineTransparency = age / 2.5
+                diamond.BackgroundTransparency = age / 2.5
+                diamond.Rotation = 45 + math.sin(age * 4) * 20
+            end)
+            table.insert(cleanups, function() pulse:Disconnect(); shine:Destroy(); jewel:Destroy() end)
+        end
+    end
     friendInput.Text = ""
     changed()
     refreshFriendList()
@@ -1646,8 +1697,9 @@ renderGraph = function()
     local leaves = {}
     for _, entry in ipairs(controlRows) do
         local definition = schema[entry.key]
+        local hiddenColorChannel = entry.key:match("Saturation$") or entry.key:match("Value$")
         local matches = query ~= "" and normalizeQuery(definition[3] .. " " .. definition[4] .. " " .. entry.key):find(query, 1, true)
-        if matches or (query == "" and (entry.page == selectedCategory or (selectedCategory == "Настройки" and entry.page == "Бинды")) and settingGroup[entry.key] == selectedGroup) then
+        if not hiddenColorChannel and (matches or (query == "" and (entry.page == selectedCategory or (selectedCategory == "Настройки" and entry.page == "Бинды")) and settingGroup[entry.key] == selectedGroup)) then
             table.insert(leaves, entry)
         end
     end
@@ -1659,11 +1711,51 @@ renderGraph = function()
         local y = 14 + (index - 1) * 40
         wire(Vector2.new(520, selectedY), Vector2.new(588, y + 15))
         local assigned = bindings[entry.key]
-        local label = definition[3] .. (assigned and "  [" .. assigned .. "]" or "")
+        local label = (entry.key:match("Hue$") and (entry.key == "menuHue" and "Menu Color" or entry.key == "espHue" and "ESP Color" or "FOV Color") or definition[3]) .. (assigned and "  [" .. assigned .. "]" or "")
         if query ~= "" then label = (displayNames[entry.page] or entry.page) .. " / " .. label end
         local control = node(label, 588, y, 258, settings[entry.key] == true, function()
             openDetail(definition[3])
-            moveDetail(entry.frame, 1)
+            if entry.key:match("Hue$") then
+                local prefix = entry.key:gsub("Hue$", "")
+                local panel = create("Frame", detailBody, { Size = UDim2.new(1, -20, 0, 410), BackgroundTransparency = 1, LayoutOrder = 1 })
+                table.insert(temporaryRows, panel)
+                local initial = Color3.fromHSV(settings[entry.key] / 360, settings[prefix .. "Saturation"] / 100, settings[prefix .. "Value"] / 100)
+                local before = create("Frame", panel, { Position = UDim2.fromOffset(8, 28), Size = UDim2.fromOffset(110, 36), BackgroundColor3 = initial })
+                local after = create("Frame", panel, { Position = UDim2.fromOffset(132, 28), Size = UDim2.fromOffset(110, 36), BackgroundColor3 = initial })
+                rounded(before, 8); rounded(after, 8)
+                text(panel, "Было                     Стало", { Position = UDim2.fromOffset(8, 0), Size = UDim2.fromOffset(280, 24) })
+                local function choose(color)
+                    local h, sat, value = color:ToHSV()
+                    setValue(entry.key, math.round(h * 359))
+                    setValue(prefix .. "Saturation", math.round(sat * 100))
+                    setValue(prefix .. "Value", math.round(value * 100))
+                    after.BackgroundColor3 = color
+                end
+                local presets = { {235,215,180}, {255,195,210}, {245,160,185}, {210,180,245}, {175,190,250}, {150,210,250}, {155,230,225}, {170,235,195}, {215,245,145}, {250,230,155}, {250,195,145}, {245,155,140}, {205,205,220}, {245,245,245}, {130,150,180} }
+                for index, rgb in ipairs(presets) do
+                    local color = Color3.fromRGB(rgb[1], rgb[2], rgb[3])
+                    local swatch = button(panel, "", UDim2.fromOffset(8 + ((index - 1) % 15) * 36, 82), UDim2.fromOffset(30, 30))
+                    swatch.BackgroundColor3 = color
+                    swatch.Activated:Connect(function() choose(color) end)
+                end
+                for row = 0, 5 do
+                    for column = 0, 23 do
+                        local color = Color3.fromHSV(column / 24, row < 3 and (row + 1) / 3 or 1, row < 3 and 1 or (7 - row) / 5)
+                        local swatch = button(panel, "", UDim2.fromOffset(8 + column * 22, 132 + row * 32), UDim2.fromOffset(21, 30))
+                        swatch.BackgroundColor3 = color
+                        swatch.Activated:Connect(function() choose(color) end)
+                    end
+                end
+                local hex = text(panel, "", { Position = UDim2.fromOffset(270, 342), Size = UDim2.fromOffset(150, 34), PlaceholderText = "#RRGGBB", ClearTextOnFocus = false }, "TextBox")
+                hex.FocusLost:Connect(function()
+                    local value = hex.Text:gsub("#", ""):match("^%s*(%x%x%x%x%x%x)%s*$")
+                    if value then
+                        choose(Color3.fromRGB(tonumber(value:sub(1, 2), 16), tonumber(value:sub(3, 4), 16), tonumber(value:sub(5, 6), 16)))
+                    end
+                end)
+                local reset = button(panel, "Вернуть исходный", UDim2.fromOffset(8, 342), UDim2.fromOffset(200, 34))
+                reset.Activated:Connect(function() choose(initial) end)
+            else moveDetail(entry.frame, 1) end
             local explanation = text(detailBody, definition[4], {
                 Size = UDim2.new(1, -20, 0, 70), TextWrapped = true,
                 TextXAlignment = Enum.TextXAlignment.Left, TextYAlignment = Enum.TextYAlignment.Top,
@@ -1830,7 +1922,8 @@ local function placeLabel(label, value, x, y, size, anchorX, anchorY, camera, co
         labelMetrics[label] = metrics
     end
     local width = metrics.width
-    local height = size + 4
+    local _, breaks = value:gsub("\n", "")
+    local height = (size + 4) * (breaks + 1)
     local left, top = x - width * anchorX, y - height * anchorY
     local viewport = camera.ViewportSize
     left = math.clamp(left, 0, math.max(0, viewport.X - width))
@@ -1847,7 +1940,7 @@ local function placeLabel(label, value, x, y, size, anchorX, anchorY, camera, co
         return false
     end
     if overlaps(top) then
-        for step = 1, 12 do
+        for step = 1, 2 do
             local proposed = originalTop + direction * step * (height + 3)
             if proposed >= 0 and proposed + height <= viewport.Y and not overlaps(proposed) then
                 top = proposed
@@ -1904,18 +1997,15 @@ local function renderLabels(screen, candidate, low, high, camera, color)
     end
     local center = (low.X + high.X) / 2
     -- Screen-space gaps keep text outside the body at any distance or lean angle.
-    placeLabel(screen.nameLabel, settings.names and (candidate.owner and candidate.owner.Name or candidate.model.Name) .. (isFriend(candidate.owner) and " [ALLY]" or "") or "",
-        center, low.Y - 4, size, 0.5, 1, camera, color)
-    placeLabel(screen.healthLabel, settings.health and string.format("%d HP", math.ceil(candidate.humanoid.Health)) or "",
-        high.X + 5, low.Y, size, 0, 0, camera, color)
-    local weapon = heldItem(candidate.model)
-    placeLabel(screen.weaponLabel, settings.weapon and weapon and weapon.Name or "",
-        center, high.Y + 4, size, 0.5, 0, camera, color)
+    local weapon = settings.weapon and heldItem(candidate.model)
+    local lines = {}
+    if settings.names then table.insert(lines, (candidate.owner and candidate.owner.Name or candidate.model.Name) .. (isFriend(candidate.owner) and " [ALLY]" or "")) end
+    if settings.health then table.insert(lines, string.format("%d HP", math.ceil(candidate.humanoid.Health))) end
     local distance = (candidate.root.Position - camera.CFrame.Position).Magnitude
-    local distanceY = high.Y + 4
-    if settings.weapon and weapon then distanceY += size + 6 end
-    placeLabel(screen.distanceLabel, settings.distance and string.format("%d st", math.round(distance)) or "",
-        center, distanceY, size, 0.5, 0, camera, color)
+    if settings.distance then table.insert(lines, string.format("%d st", math.round(distance))) end
+    screen.healthLabel.Visible, screen.distanceLabel.Visible = false, false
+    placeLabel(screen.nameLabel, table.concat(lines, "\n"), center, low.Y - 4, size, 0.5, 1, camera, color)
+    placeLabel(screen.weaponLabel, weapon and weapon.Name or "", center, high.Y + 4, size, 0.5, 0, camera, color)
 end
 
 local candidates = {}
@@ -2285,13 +2375,15 @@ local function initializeWinter()
                             local parts = {}
                             for index = 1, 5 do
                                 parts[index] = create("Part", model, {
-                                    Shape = Enum.PartType.Ball, Anchored = true,
+                                    Shape = index == 1 and Enum.PartType.Cylinder or Enum.PartType.Ball, Anchored = true,
                                     CanCollide = false, CanTouch = false, CanQuery = false,
                                     CastShadow = false, Material = Enum.Material.SmoothPlastic,
                                     Color = (index == 1 or index == 5) and Color3.fromRGB(245, 245, 250) or Color3.fromRGB(195, 45, 66),
                                     Size = Vector3.new(1, 1, 1),
                                 })
                             end
+                            create("SpecialMesh", parts[2], { MeshType = Enum.MeshType.FileMesh, MeshId = "rbxasset://fonts/cone.mesh" })
+                            parts[3].Transparency, parts[4].Transparency = 1, 1
                             local tag = create("BillboardGui", gui, {
                                 Adornee = head, Size = UDim2.fromOffset(160, 22),
                                 StudsOffsetWorldSpace = Vector3.new(0, 2.4, 0), AlwaysOnTop = false,
@@ -2314,12 +2406,16 @@ local function initializeWinter()
                 local head = entry.head
                 entry.tag.Enabled = not settings.esp
                 for index, part in ipairs(entry.parts) do
-                    local width = index == 1 and 1.25 or math.max(0.18, 1.2 - index * 0.2)
-                    local height = index == 1 and 0.17 or 0.36
-                    part.Size = Vector3.new(head.Size.X * width, height, head.Size.Z * width)
-                    part.CFrame = head.CFrame * CFrame.new(
-                        math.sin(time * 1.6) * (index - 1) * 0.015,
-                        head.Size.Y / 2 + (index - 1) * 0.22, 0)
+                    if index == 1 then
+                        part.Size = Vector3.new(0.24, head.Size.Z * 1.35, head.Size.X * 1.35)
+                        part.CFrame = head.CFrame * CFrame.new(0, head.Size.Y / 2 + 0.12, 0) * CFrame.Angles(0, 0, math.pi / 2)
+                    elseif index == 2 then
+                        part.Size = Vector3.new(head.Size.X * 1.2, 1.15, head.Size.Z * 1.2)
+                        part.CFrame = head.CFrame * CFrame.new(0.1, head.Size.Y / 2 + 0.7, 0) * CFrame.Angles(0, 0, -0.15)
+                    elseif index == 5 then
+                        part.Size = Vector3.new(0.32, 0.32, 0.32)
+                        part.CFrame = head.CFrame * CFrame.new(0.2, head.Size.Y / 2 + 1.3, 0)
+                    end
                 end
             end
         end
@@ -2332,6 +2428,21 @@ local updateCameraVisuals
 do
 local function initializeCameraVisuals()
     local tracked, viewmodels = {}, {}
+    local vegetation, pending, cursor = {}, {}, 1
+    local foliageNames = { leaf = "noLeaves", leaves = "noLeaves", foliage = "noLeaves",
+        grass = "noGrass", grasspatch = "noGrass", tallgrass = "noGrass" }
+    local function queueVegetation(object) table.insert(pending, object) end
+    for _, object in ipairs(workspace:GetChildren()) do queueVegetation(object) end
+    connect(workspace.DescendantAdded, queueVegetation)
+    local function restoreVegetation(object, entry)
+        if entry.original ~= nil and object.Parent and object.LocalTransparencyModifier == 1 then
+            object.LocalTransparencyModifier = entry.original
+        end
+        entry.original = nil
+    end
+    table.insert(cleanups, function()
+        for object, entry in pairs(vegetation) do restoreVegetation(object, entry) end
+    end)
     local cameraLast, characterLast, characterConnection, scanTime = nil, nil, nil, 1
     local visorNames = { visor = true, visoroverlay = true, helmetvisor = true,
         facevisor = true, faceplate = true, visoreffect = true }
@@ -2352,7 +2463,10 @@ local function initializeCameraVisuals()
         entry.applied = nil
     end
     local function restoreModel(model, entry)
-        if entry.applied and model.Parent and model:GetPivot() == entry.applied then model:PivotTo(entry.original) end
+        if entry.applied and model.Parent then
+            local current = model:GetPivot()
+            model:PivotTo(current == entry.applied and entry.original or current - entry.offset)
+        end
         entry.applied = nil
     end
     -- Remove our previous offset before the game's camera/weapon animation runs.
@@ -2360,14 +2474,37 @@ local function initializeCameraVisuals()
     local resetName = "OktanViewmodelReset_" .. HttpService:GenerateGUID(false)
     RunService:BindToRenderStep(resetName, Enum.RenderPriority.First.Value, function()
         for model, entry in pairs(viewmodels) do restoreModel(model, entry) end
+        override("Zoom", workspace.CurrentCamera, "FieldOfView", nil)
     end)
     table.insert(cleanups, function()
         RunService:UnbindFromRenderStep(resetName)
         if characterConnection then characterConnection:Disconnect() end
         for object, entry in pairs(tracked) do restoreVisor(object, entry) end
         for model, entry in pairs(viewmodels) do restoreModel(model, entry) end
+        override("Zoom", workspace.CurrentCamera, "FieldOfView", nil)
     end)
     return function(dt, camera)
+        -- Bounded initial discovery; streamed descendants are queued individually.
+        local budget = 80
+        while cursor <= #pending and budget > 0 do
+            local object = pending[cursor]
+            cursor += 1; budget -= 1
+            if object.Parent and object ~= workspace.CurrentCamera and not object:FindFirstChildOfClass("Humanoid") then
+                local key = foliageNames[normalized(object)]
+                if key and object:IsA("BasePart") then vegetation[object] = { key = key } end
+                for _, child in ipairs(object:GetChildren()) do queueVegetation(child) end
+            end
+        end
+        if cursor > #pending then table.clear(pending); cursor = 1 end
+        for object, entry in pairs(vegetation) do
+            if not object.Parent then vegetation[object] = nil
+            elseif settings[entry.key] then
+                if entry.original == nil or object.LocalTransparencyModifier ~= 1 then
+                    entry.original = object.LocalTransparencyModifier
+                end
+                object.LocalTransparencyModifier = 1
+            else restoreVegetation(object, entry) end
+        end
         scanTime += dt
         if characterLast ~= player.Character then
             if characterConnection then characterConnection:Disconnect() end
@@ -2408,11 +2545,12 @@ local function initializeCameraVisuals()
         end
         for model, entry in pairs(viewmodels) do
             if not model.Parent then viewmodels[model] = nil
-            elseif settings.viewmodel and camera and model:IsDescendantOf(camera) then
+            elseif settings.viewmodel and not settings._ads and camera and model:IsDescendantOf(camera) then
                 local pivot = model:GetPivot()
                 if entry.applied and pivot == entry.applied then pivot = entry.original end
                 entry.original = pivot
                 local offset = camera.CFrame:VectorToWorldSpace(Vector3.new(settings.vmX / 100, settings.vmY / 100, settings.vmZ / 100))
+                entry.offset = offset
                 entry.applied = pivot + offset
                 model:PivotTo(entry.applied)
             else restoreModel(model, entry) end
@@ -2546,7 +2684,7 @@ RunService:BindToRenderStep(renderName, Enum.RenderPriority.Last.Value + 1, func
     updateHud(dt)
     updateWinter(dt)
     updateLootESP(dt, camera)
-    updateCameraVisuals(dt, camera)
+
     applyTheme()
     ringStroke.Color = Color3.fromHSV(settings.fovHue / 360, settings.fovSaturation / 100, settings.fovValue / 100)
     renderState.elapsed += dt
@@ -2582,15 +2720,21 @@ RunService:BindToRenderStep(renderName, Enum.RenderPriority.Last.Value + 1, func
         for _, marker in ipairs(orderedMarkers) do renderScreenMarker(marker, camera, color) end
     end
     local inputReady = focused and not menu.Visible and not capture and Input:GetFocusedTextBox() == nil
+    local records = game:GetService("ReplicatedStorage"):FindFirstChild("Players")
+    local record = records and records:FindFirstChild(player.Name)
+    local status = record and record:FindFirstChild("Status")
+    local variables = status and status:FindFirstChild("GameplayVariables")
+    settings._ads = variables and variables:GetAttribute("Aiming") == true or false
+    updateCameraVisuals(dt, camera)
     local zooming = camera and inputReady and settings.zoom and held("zoom")
-    override("Zoom", camera, "FieldOfView", zooming and settings.zoomFov or (settings.cameraFov and settings.cameraFovValue or nil))
+    override("Zoom", camera, "FieldOfView", (not settings._ads) and (zooming and settings.zoomFov or (settings.cameraFov and settings.cameraFovValue or nil)) or nil)
     enforceOverrides()
     ring.Visible = camera ~= nil and inputReady and settings.aim and settings.ring
     if renderState.shownRingRadius ~= settings.radius then
         renderState.shownRingRadius = settings.radius
         ring.Size = UDim2.fromOffset(renderState.shownRingRadius * 2, renderState.shownRingRadius * 2)
     end
-    local showCross = camera ~= nil and inputReady and settings.crosshair
+    local showCross = camera ~= nil and inputReady and settings.crosshair and not settings._ads
     for _, arm in ipairs(crosshair) do arm.Visible = showCross end
     if renderState.shownCrossLength ~= settings.length or renderState.shownCrossGap ~= settings.gap then
         renderState.shownCrossLength = settings.length
@@ -2615,4 +2759,3 @@ RunService:BindToRenderStep(renderName, Enum.RenderPriority.Last.Value + 1, func
         lockedModel, aimRotation = nil, nil
     end
 end)
-
