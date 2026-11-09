@@ -23,6 +23,10 @@ end
 
 -- Every exposed setting has its own description, bounds and keyboard actions.
 local definitions = {
+    { "musicPlay", false, "Music Player", "Запуск и пауза личного плеера. Слышишь только ты; при входе музыка сама не запускается.", "Настройки" },
+    { "musicVolume", 20, "Music Volume", "Громкость только личной музыки. Звуки игры не меняет.", "Настройки", 0, 100 },
+    { "musicRepeat", false, "Repeat Track", "Повторяет текущий трек.", "Настройки" },
+    { "musicIndex", 1, "Track Index", "Выбор трека из твоего плейлиста. На плюс и минус можно назначить клавиши переключения.", "Настройки", 1, 30 },
     { "noRecoil", false, "No Recoil", "Снижает подтверждённый локальный множитель Recoil персонажа до нуля. Отдачу конкретного оружия ещё нужно проверить в игре.", "Наведение" },
     { "aimEase", 220, "Aim Ease", "Время плавного входа в наведение в миллисекундах. Меньше — быстрее захват.", "Наведение", 50, 500 },
     { "aimFilter", 14, "Target Filter", "Сглаживание дрожания точки цели. Меньше — мягче, больше — точнее следует движению.", "Наведение", 5, 30 },
@@ -114,6 +118,7 @@ local function isFriend(owner)
     return owner ~= nil and friendNames[string.lower(owner.Name)] == true
 end
 local defaults, schema, settings = {}, {}, {}
+settings._musicLibrary = {}
 for _, definition in ipairs(definitions) do
     local key = definition[1]
     defaults[key] = definition[2]
@@ -174,6 +179,18 @@ local function validateConfig(data)
             end
         end
     end
+    local music, musicIds = {}, {}
+    if type(data.music) == "table" then
+        for _, track in ipairs(data.music) do
+            if #music >= 30 then break end
+            if type(track) == "table" and type(track.id) == "string" and #track.id <= 20
+                and track.id:match("^[1-9]%d*$") and not musicIds[track.id] then
+                musicIds[track.id] = true
+                local name = type(track.name) == "string" and track.name:gsub("%c", " "):sub(1, 60) or "Audio " .. track.id
+                table.insert(music, { id = track.id, name = name })
+            end
+        end
+    end
     local validatedBindings, used = {}, {}
     for action in pairs(allowedActions) do
         local key = savedBindings[action]
@@ -188,7 +205,7 @@ local function validateConfig(data)
         if not validatedBindings.aim and not used.MouseButton2 then validatedBindings.aim = "MouseButton2" end
         if not validatedBindings.zoom and not used.LeftAlt then validatedBindings.zoom = "LeftAlt" end
     end
-    return { settings = validated, bindings = validatedBindings, friends = validatedFriends, revision = data.revision }
+    return { settings = validated, bindings = validatedBindings, friends = validatedFriends, music = music, revision = data.revision }
 end
 if canSave then
     local function readConfig(prefix)
@@ -220,6 +237,7 @@ if canSave then
     if newest then
         settings, bindings, revision = newest.settings, newest.bindings, newest.revision
         friendNames = newest.friends
+        settings._musicLibrary = newest.music or {}
         configStatus = "Конфиг загружен"
     else
         dirty, lastChange = true, os.clock()
@@ -241,7 +259,7 @@ local function saveConfig()
         for key in pairs(schema) do persistedSettings[key] = settings[key] end
         local content = HttpService:JSONEncode({
             version = 5, revision = nextRevision,
-            settings = persistedSettings, bindings = bindings, friends = friendNames,
+            settings = persistedSettings, bindings = bindings, friends = friendNames, music = settings._musicLibrary or {},
         })
         -- Alternate slots preserve the previous valid save if a write is interrupted.
         writefile(filePrefix .. (nextRevision % 2 == 0 and "a" or "b") .. ".json", content)
@@ -622,7 +640,9 @@ local resetButton = button(actionsRow, "Reset", UDim2.fromOffset(180, 12), UDim2
 local unloadButton = button(actionsRow, "Unload", UDim2.fromOffset(348, 12), UDim2.fromOffset(155, 32))
 connect(saveButton.Activated, function() changed(); task.spawn(saveConfig) end)
 connect(resetButton.Activated, function()
+    local library = settings._musicLibrary
     settings = table.clone(defaults)
+    settings._musicLibrary = library or {}
     bindings = { menu = "Insert", aim = "MouseButton2", zoom = "LeftAlt", inspect = "F4" }
     capture = nil
     changed()
@@ -741,6 +761,204 @@ do
     end
 end
 
+do
+local function initializeLocalMusic()
+    settings.musicPlay = false -- Explicit user gesture after each injection; never autoplay a saved flag.
+    local audio, output, wire, folder, activeId
+    local requested, loading, elapsed = false, nil, 1
+    local message = "Только для тебя • добавь Roblox Audio ID и нажми Play"
+    local function library()
+        settings._musicLibrary = settings._musicLibrary or {}
+        return settings._musicLibrary
+    end
+    local function normalize(raw)
+        if type(raw) ~= "string" then return nil end
+        raw = raw:match("^%s*(.-)%s*$")
+        local id = raw:match("^(%d+)$") or raw:match("^rbxassetid://(%d+)$")
+        if not id then return nil end
+        id = id:gsub("^0+", "")
+        return #id > 0 and #id <= 20 and id or nil
+    end
+    local form = create("Frame", pages["Настройки"], { Name = "MusicPlayer", Size = UDim2.new(1, -20, 0, 430), BackgroundTransparency = 1, Visible = false })
+    local now = text(form, "Личный плеер", { Position = UDim2.fromOffset(16, 4), Size = UDim2.new(1, -32, 0, 28), TextXAlignment = Enum.TextXAlignment.Left, TextSize = 16 })
+    local idInput = text(form, "", { Position = UDim2.fromOffset(16, 42), Size = UDim2.fromOffset(210, 34), BackgroundColor3 = palette.control, BackgroundTransparency = 0.1, PlaceholderText = "Roblox Audio ID", ClearTextOnFocus = false }, "TextBox")
+    local nameInput = text(form, "", { Position = UDim2.fromOffset(238, 42), Size = UDim2.fromOffset(280, 34), BackgroundColor3 = palette.control, BackgroundTransparency = 0.1, PlaceholderText = "Название (необязательно)", ClearTextOnFocus = false }, "TextBox")
+    rounded(idInput, 8); rounded(nameInput, 8)
+    local addButton = button(form, "Add", UDim2.fromOffset(532, 42), UDim2.fromOffset(90, 34))
+    local previous = button(form, "Previous", UDim2.fromOffset(16, 92), UDim2.fromOffset(95, 34))
+    local playButton = button(form, "Play", UDim2.fromOffset(120, 92), UDim2.fromOffset(95, 34))
+    local nextButton = button(form, "Next", UDim2.fromOffset(224, 92), UDim2.fromOffset(95, 34))
+    local stopButton = button(form, "Stop", UDim2.fromOffset(328, 92), UDim2.fromOffset(95, 34))
+    local repeatButton = button(form, "Repeat: Off", UDim2.fromOffset(432, 92), UDim2.fromOffset(114, 34))
+    local quieter = button(form, "Vol -", UDim2.fromOffset(560, 92), UDim2.fromOffset(66, 34))
+    local louder = button(form, "Vol +", UDim2.fromOffset(632, 92), UDim2.fromOffset(66, 34))
+    local info = text(form, message, { Position = UDim2.fromOffset(16, 130), Size = UDim2.new(1, -32, 0, 26), TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = palette.muted })
+    local seek = button(form, "", UDim2.fromOffset(16, 164), UDim2.new(1, -32, 0, 8))
+    local fill = create("Frame", seek, { Size = UDim2.fromScale(0, 1), BackgroundColor3 = palette.accent, BorderSizePixel = 0 })
+    rounded(fill, 4)
+    local list = create("ScrollingFrame", form, { Position = UDim2.fromOffset(16, 188), Size = UDim2.new(1, -32, 0, 220), BackgroundTransparency = 1, ScrollBarThickness = 3, CanvasSize = UDim2.fromOffset(0, 0), AutomaticCanvasSize = Enum.AutomaticSize.Y })
+    local api = { form = form, normalize = normalize }
+    local function current()
+        local tracks = library()
+        settings.musicIndex = math.clamp(settings.musicIndex, 1, math.max(1, #tracks))
+        return tracks[settings.musicIndex]
+    end
+    local function ensureAudio()
+        if audio then return true end
+        local ok = pcall(function()
+            folder = create("Folder", game:GetService("SoundService"), { Name = "OktanLocalMusic" })
+            audio = create("AudioPlayer", folder, { Name = "Player", AutoPlay = false, AutoLoad = false, Volume = settings.musicVolume / 100 })
+            output = create("AudioDeviceOutput", folder, { Name = "PrivateOutput", Player = player })
+            if output.Player ~= player then error("Private audio output unavailable") end
+            wire = create("Wire", folder, { SourceInstance = audio, TargetInstance = output })
+            connect(audio.Ended, function()
+                if not requested or settings.musicRepeat then return end
+                if settings.musicIndex < #library() then api.next(1)
+                else api.stop(); message = "Плейлист завершён" end
+            end)
+        end)
+        if not ok then
+            if folder then folder:Destroy() end
+            audio, output, wire, folder = nil, nil, nil, nil
+            message = "Локальный аудиовыход недоступен"
+        end
+        return ok
+    end
+    api.pause = function()
+        if audio then audio:Stop() end
+        requested, loading = false, nil
+        setValue("musicPlay", false)
+        message = "Пауза • слышишь только ты"
+    end
+    api.stop = function()
+        api.pause()
+        if audio then audio.TimePosition = 0 end
+        message = "Остановлено"
+    end
+    api.play = function()
+        local track = current()
+        if not track then message = "Сначала добавь Roblox Audio ID"; settings.musicPlay = false; requested = false; return false end
+        if not ensureAudio() then settings.musicPlay = false; requested = false; return false end
+        local ok = pcall(function()
+            if not output or output.Player ~= player then error("Private output changed") end
+            if activeId ~= track.id then
+                audio:Stop()
+                audio.Asset = "rbxassetid://" .. track.id
+                audio.TimePosition = 0
+                activeId = track.id
+            elseif audio.IsReady and audio.TimeLength > 0 and audio.TimePosition >= audio.TimeLength - 0.01 then audio.TimePosition = 0 end
+            audio.Volume, audio.Looping = settings.musicVolume / 100, settings.musicRepeat
+            audio:Play()
+        end)
+        if not ok then
+            pcall(function() audio:Stop() end)
+            activeId, requested, loading = nil, false, nil
+            settings.musicPlay = false
+            message = "Не удалось запустить локальное аудио"
+            return false
+        end
+        requested, loading = true, 0
+        setValue("musicPlay", true)
+        message = "Загрузка • " .. track.name
+        return true
+    end
+    api.next = function(delta)
+        if #library() == 0 then message = "Плейлист пуст"; return end
+        local shouldPlay = requested
+        setValue("musicIndex", ((settings.musicIndex - 1 + delta) % #library()) + 1)
+        if shouldPlay then api.play() else
+            if audio then audio:Stop(); audio.TimePosition = 0 end
+            activeId = nil
+            message = "Трек выбран • нажми Play"
+        end
+    end
+    local function refreshList()
+        list:ClearAllChildren()
+        create("UIListLayout", list, { SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, 5) })
+        for index, track in ipairs(library()) do
+            local row = create("Frame", list, { Size = UDim2.new(1, -8, 0, 34), BackgroundTransparency = 1, LayoutOrder = index })
+            local choose = button(row, index .. ". " .. track.name, UDim2.fromOffset(0, 0), UDim2.new(1, -76, 1, 0))
+            choose.TextXAlignment = Enum.TextXAlignment.Left
+            local remove = button(row, "Delete", UDim2.new(1, -70, 0, 0), UDim2.fromOffset(68, 34))
+            choose.Activated:Connect(function()
+                local shouldPlay = requested
+                setValue("musicIndex", index)
+                if shouldPlay then api.play() else activeId = nil; message = "Трек выбран • нажми Play" end
+            end)
+            remove.Activated:Connect(function() api.remove(index) end)
+        end
+    end
+    api.add = function(raw, name)
+        local id = normalize(raw)
+        if not id then message = "Нужен Roblox Audio ID, не ссылка на YouTube/Spotify"; return false end
+        local tracks = library()
+        local title = type(name) == "string" and name:gsub("%c", " "):match("^%s*(.-)%s*$"):sub(1, 60) or ""
+        if title == "" then title = "Audio " .. id end
+        for index, track in ipairs(tracks) do
+            if track.id == id then settings.musicIndex = index; track.name = title; changed(); refreshList(); return true end
+        end
+        if #tracks >= 30 then message = "В плейлисте максимум 30 треков"; return false end
+        table.insert(tracks, { id = id, name = title })
+        changed(); refreshList(); message = "Добавлено • " .. title
+        return true
+    end
+    api.remove = function(index)
+        if not library()[index] then return end
+        if index == settings.musicIndex then api.stop(); activeId = nil end
+        table.remove(library(), index)
+        if settings.musicIndex > index then settings.musicIndex -= 1 end
+        current(); changed(); refreshList()
+    end
+    connect(addButton.Activated, function() if api.add(idInput.Text, nameInput.Text) then idInput.Text, nameInput.Text = "", "" end end)
+    connect(playButton.Activated, function() if requested then api.pause() else api.play() end end)
+    connect(previous.Activated, function() api.next(-1) end)
+    connect(nextButton.Activated, function() api.next(1) end)
+    connect(stopButton.Activated, api.stop)
+    connect(repeatButton.Activated, function() setValue("musicRepeat", not settings.musicRepeat) end)
+    connect(quieter.Activated, function() setValue("musicVolume", math.max(0, settings.musicVolume - 5)) end)
+    connect(louder.Activated, function() setValue("musicVolume", math.min(100, settings.musicVolume + 5)) end)
+    connect(seek.InputBegan, function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 and audio and audio.IsReady and audio.TimeLength > 0 then
+            audio.TimePosition = math.clamp((input.Position.X - seek.AbsolutePosition.X) / math.max(1, seek.AbsoluteSize.X), 0, 1) * audio.TimeLength
+        end
+    end)
+    api.step = function(dt)
+        elapsed += dt
+        if settings.musicPlay ~= requested then if settings.musicPlay then api.play() else api.pause() end end
+        if elapsed < 0.2 then return end
+        local tick = elapsed
+        elapsed = 0
+        local track = current()
+        if requested and track and activeId ~= track.id then api.play() end
+        if audio then
+            audio.Volume, audio.Looping = settings.musicVolume / 100, settings.musicRepeat
+            if requested and loading ~= nil then
+                if audio.IsReady then loading = nil; message = "Играет только у тебя"
+                else loading += tick
+                    if loading >= 15 then api.stop(); message = "Трек не загрузился: проверь ID и разрешение на аудио" end
+                end
+            end
+        end
+        now.Text = track and track.name or "Личный плеер • плейлист пуст"
+        playButton.Text = requested and "Pause" or "Play"
+        repeatButton.Text = settings.musicRepeat and "Repeat: On" or "Repeat: Off"
+        info.Text = message .. "  •  " .. tostring(settings.musicVolume) .. "%"
+        fill.BackgroundColor3 = palette.accent
+        fill.Size = UDim2.fromScale(audio and audio.TimeLength > 0 and math.clamp(audio.TimePosition / audio.TimeLength, 0, 1) or 0, 1)
+        settings._musicStatus = { title = track and track.name or "", playing = requested, localOnly = true, volume = settings.musicVolume, state = message }
+    end
+    table.insert(cleanups, function()
+        if audio then pcall(function() audio:Stop() end) end
+        if folder then folder:Destroy() end
+        form:Destroy()
+        settings._musicStatus = nil
+    end)
+    refreshList()
+    return api
+end
+controlRows.music = initializeLocalMusic()
+end
+
 local raidReport = button(actionsRow, "Export Debug", UDim2.fromOffset(516, 12), UDim2.fromOffset(184, 32))
 describe(raidReport, "Если Kills показывает прочерк, сохраните структуру рейдовых данных для подключения счётчика.")
 connect(raidReport.Activated, function()
@@ -764,6 +982,7 @@ connect(raidReport.Activated, function()
         end
         report.camera = { ads = settings._ads, nativeFov = settings._nativeFov, rawRmb = Input:IsMouseButtonPressed(Enum.UserInputType.MouseButton2), fov = workspace.CurrentCamera and workspace.CurrentCamera.FieldOfView, viewmodel = settings.viewmodel, viewmodelStatus = settings._viewmodelStatus }
         report.cameraTrace = settings._cameraTrace
+        report.music = settings._musicStatus
         report.weaponTuning = settings._weaponStatus
         report.visualStudio = settings._graphicsStatus
         report.chronoEcho = settings._echoStatus
@@ -904,7 +1123,8 @@ connect(Input.InputBegan, function(input, processed)
                     local definition = schema[settingKey]
                     local step = math.max(1, math.round((definition[7] - definition[6]) / 100))
                     local delta = suffix == "Plus" and step or -step
-                    setValue(settingKey, math.clamp(settings[settingKey] + delta, definition[6], definition[7]))
+                    if settingKey == "musicIndex" then controlRows.music.next(delta > 0 and 1 or -1)
+                    else setValue(settingKey, math.clamp(settings[settingKey] + delta, definition[6], definition[7])) end
                 end
             end
         end
@@ -1454,6 +1674,7 @@ local function updateHud(dt)
     if hudElapsed >= 0.2 then
     hudElapsed = 0
     local sections = {}
+    if settings._musicStatus and settings._musicStatus.playing then table.insert(sections, "Music: " .. settings._musicStatus.title:sub(1, 42)) end
     if raid.kills ~= nil then table.insert(sections, (raid.session and "Session kills: " or "Raid kills: ") .. tostring(raid.kills)) end
     if raid.extracted ~= nil then
         table.insert(sections, "Extracted")
@@ -1497,9 +1718,9 @@ local treeGroups = {
     ["Мир"] = { "Освещение", "Vegetation", "Visual Studio" },
     ["Камера"] = { "Зум", "Прицел", "Vision", "Viewmodel" },
     ["Бинды"] = { "Инвентарь", "Dynamic Island", "Управление", "Назначения функций" },
-    ["Настройки"] = { "Оформление", "Клиент" },
+    ["Настройки"] = { "Оформление", "Клиент", "Music" },
 }
-local settingGroup = { noRecoil = "Weapon Tuning", aimEase = "Область и плавность", aimFilter = "Область и плавность", graphics = "Visual Studio", gfxTier = "Visual Studio", gfxLook = "Visual Studio", echo = "Оформление", echoDelay = "Оформление", echoFreeze = "Оформление", motion = "Оформление", killFx = "Оформление", crossStyle = "Прицел", crossWidth = "Прицел", noLeaves = "Vegetation", noGrass = "Vegetation", corpseEsp = "Loot", itemEsp = "Loot", lootThrough = "Loot", lootRange = "Loot", lootTextSize = "Loot",
+local settingGroup = { musicPlay = "Music", musicVolume = "Music", musicRepeat = "Music", musicIndex = "Music", noRecoil = "Weapon Tuning", aimEase = "Область и плавность", aimFilter = "Область и плавность", graphics = "Visual Studio", gfxTier = "Visual Studio", gfxLook = "Visual Studio", echo = "Оформление", echoDelay = "Оформление", echoFreeze = "Оформление", motion = "Оформление", killFx = "Оформление", crossStyle = "Прицел", crossWidth = "Прицел", noLeaves = "Vegetation", noGrass = "Vegetation", corpseEsp = "Loot", itemEsp = "Loot", lootThrough = "Loot", lootRange = "Loot", lootTextSize = "Loot",
     noVisor = "Vision", cameraFov = "Vision", cameraFovValue = "Vision",
     viewmodel = "Viewmodel", vmX = "Viewmodel", vmY = "Viewmodel", vmZ = "Viewmodel", sticky = "Наведение", noFog = "Освещение", bubbles = "Оформление", snow = "Оформление", snowDrifts = "Оформление", friendHats = "Оформление", espFps = "Цвет и оформление", adaptiveText = "Подписи",
     aim = "Наведение", aimPlayers = "Цели и проверки", aimDummies = "Цели и проверки",
@@ -1839,7 +2060,7 @@ renderGraph = function()
         if category == selectedCategory then categoryY = 33 + (index - 1) * 52 end
     end
     local groups = treeGroups[selectedCategory] or {}
-    if selectedCategory == "Настройки" then groups = { "Оформление", "Инвентарь", "Dynamic Island", "Клиент" } end
+    if selectedCategory == "Настройки" then groups = { "Оформление", "Инвентарь", "Dynamic Island", "Клиент", "Music" } end
     local selectedY = 90
     for index, group in ipairs(groups) do
         local y = 35 + (index - 1) * 88
@@ -1872,7 +2093,9 @@ renderGraph = function()
         if query ~= "" then label = (displayNames[entry.page] or entry.page) .. " / " .. label end
         local control = node(label, 588, y, 258, settings[entry.key] == true, function()
             openDetail(definition[3])
-            if entry.key:match("Hue$") then
+            if entry.key == "musicPlay" then
+                moveDetail(controlRows.music.form, 1)
+            elseif entry.key:match("Hue$") then
                 local prefix = entry.key:gsub("Hue$", "")
                 local panel = create("Frame", detailBody, { Size = UDim2.new(1, -20, 0, 410), BackgroundTransparency = 1, LayoutOrder = 1 })
                 table.insert(temporaryRows, panel)
@@ -3460,6 +3683,7 @@ RunService:BindToRenderStep(renderName, Enum.RenderPriority.Last.Value + 1, func
     visualStudio.step(dt)
     chronoEcho.step(dt)
     aimContext.weaponTuning.step(dt)
+    controlRows.music.step(dt)
     updateLootESP(dt, camera)
 
     applyTheme()
