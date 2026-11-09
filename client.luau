@@ -1,4 +1,4 @@
--- Oktan 8. Full standalone source. Paste all of this file into Executor.
+-- Oktan 9. Full standalone source. Paste all of this file into Executor.
 -- Configuration files are relative to the executor's filesystem workspace.
 if not game:IsLoaded() then game.Loaded:Wait() end
 local Players = game:GetService("Players")
@@ -23,6 +23,10 @@ end
 
 -- Every exposed setting has its own description, bounds and keyboard actions.
 local definitions = {
+    { "motion", true, "Motion", "Плавное появление меню и переливы выбранных разделов.", "Настройки" },
+    { "killFx", true, "Soul FX", "Поднимает призрачный силуэт при подтверждённом вашем убийстве. Требуется информация об убийце от игры.", "Настройки" },
+    { "crossStyle", 1, "Cross Style", "1 — крестик; 2 — точка; 3 — крестик с точкой.", "Камера", 1, 3 },
+    { "crossWidth", 2, "Cross Width", "Толщина линий и размер точки в пикселях.", "Камера", 1, 5 },
     { "noLeaves", false, "No Leaves", "Скрывает распознанные части листвы. Стволы и коллизия остаются.", "Мир" },
     { "noGrass", false, "No Grass", "Скрывает распознанные модели травы. Не влияет на коллизию.", "Мир" },
     { "corpseEsp", false, "Corpses", "Показывать распознанные трупы. Требует проверки структуры игры.", "ESP" },
@@ -68,7 +72,7 @@ local definitions = {
     { "smooth", 12, "Aim Speed", "Большое значение быстрее поворачивает камеру.", "Наведение", 2, 45 },
     { "esp", false, "ESP", "Общий переключатель всех маркеров персонажей.", "ESP" },
     { "espPlayers", true, "Players", "Отображает ESP на персонажах других игроков.", "ESP" },
-    { "espDummies", false, "Dummies", "Отображает модели из workspace.DeltaQATargets.", "ESP" },
+    { "espDummies", false, "NPCs", "Показывает живых NPC с Humanoid в загруженной части мира.", "ESP" },
     { "names", false, "Name", "Показывает имя игрока над персонажем.", "ESP" },
     { "health", false, "Health", "Показывает текущее значение Humanoid.Health рядом с именем.", "ESP" },
     { "distance", false, "Distance", "Показывает расстояние от камеры до цели в studs — единицах Roblox.", "ESP" },
@@ -302,7 +306,9 @@ for index = 1, 4 do
         BorderSizePixel = 0, Visible = false,
     })
 end
-local menu = create("Frame", gui, {
+crosshair.dot = create("Frame", overlay, { BackgroundColor3 = palette.text, BorderSizePixel = 0, Visible = false })
+rounded(crosshair.dot, 20)
+local menu = create("CanvasGroup", gui, {
     AnchorPoint = Vector2.new(0.5, 0.5), BackgroundColor3 = palette.background,
     BorderSizePixel = 0, Position = UDim2.fromScale(0.5, 0.5),
     Size = UDim2.fromOffset(920, 610),
@@ -319,7 +325,7 @@ local title = text(menu, "OKTAN", {
     Position = UDim2.fromOffset(24, 15), Size = UDim2.fromOffset(480, 32),
     TextSize = 23, Font = Enum.Font.GothamBold, TextXAlignment = Enum.TextXAlignment.Left,
 })
-text(menu, "OKTAN 08   /   WINTER", {
+text(menu, "OKTAN 09   /   MOTION", {
     Position = UDim2.fromOffset(25, 48), Size = UDim2.fromOffset(450, 18),
     TextColor3 = palette.muted, TextXAlignment = Enum.TextXAlignment.Left,
 })
@@ -365,6 +371,10 @@ local capture, activeSlider
 local inspectAction
 local function setMenu(visible)
     menu.Visible = visible
+    if visible and settings.motion then
+        menu.GroupTransparency = 0.65
+        TweenService:Create(menu, TweenInfo.new(0.24, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), { GroupTransparency = 0 }):Play()
+    else menu.GroupTransparency = 0 end
     reopen.Visible = not visible
     tooltip.Visible = false
     hovered = nil
@@ -636,6 +646,9 @@ connect(raidReport.Activated, function()
         end
         report.camera = { ads = settings._ads, nativeFov = settings._nativeFov, rawRmb = Input:IsMouseButtonPressed(Enum.UserInputType.MouseButton2), fov = workspace.CurrentCamera and workspace.CurrentCamera.FieldOfView, viewmodel = settings.viewmodel, viewmodelStatus = settings._viewmodelStatus }
         report.cameraTrace = settings._cameraTrace
+        report.environment = settings._environmentStatus
+        report.npcs = settings._npcCount
+        report.soulFx = settings._soulStatus
         report.cameraRig = {}
         if workspace.CurrentCamera then
             for _, object in ipairs(workspace.CurrentCamera:GetDescendants()) do
@@ -843,7 +856,7 @@ local island = create("Frame", gui, {
     ZIndex = 15,
 })
 rounded(island, 23)
-stroke(island, palette.accent).Transparency = 0.65
+stroke(island, palette.accent).Transparency = 0.25
 local islandScale = create("UIScale", island, { Scale = 1 })
 local islandHeader = text(island, "", { Size = UDim2.new(1, 0, 0, 44), TextSize = 12 }, "TextButton")
 connect(islandHeader.Activated, function() islandExpanded = not islandExpanded end)
@@ -1365,7 +1378,7 @@ local treeGroups = {
     ["Бинды"] = { "Инвентарь", "Dynamic Island", "Управление", "Назначения функций" },
     ["Настройки"] = { "Оформление", "Клиент" },
 }
-local settingGroup = { noLeaves = "Vegetation", noGrass = "Vegetation", corpseEsp = "Loot", itemEsp = "Loot", lootThrough = "Loot", lootRange = "Loot", lootTextSize = "Loot",
+local settingGroup = { motion = "Оформление", killFx = "Оформление", crossStyle = "Прицел", crossWidth = "Прицел", noLeaves = "Vegetation", noGrass = "Vegetation", corpseEsp = "Loot", itemEsp = "Loot", lootThrough = "Loot", lootRange = "Loot", lootTextSize = "Loot",
     noVisor = "Vision", cameraFov = "Vision", cameraFovValue = "Vision",
     viewmodel = "Viewmodel", vmX = "Viewmodel", vmY = "Viewmodel", vmZ = "Viewmodel", sticky = "Наведение", noFog = "Освещение", bubbles = "Оформление", snow = "Оформление", snowDrifts = "Оформление", friendHats = "Оформление", espFps = "Цвет и оформление", adaptiveText = "Подписи",
     aim = "Наведение", aimPlayers = "Цели и проверки", aimDummies = "Цели и проверки",
@@ -1486,7 +1499,7 @@ table.insert(cleanups, function() for _, connection in ipairs(graphConnections) 
 local graphTweens = {}
 local function animate(object, properties, duration, delay)
     local tween = TweenService:Create(object,
-        TweenInfo.new(duration or 0.22, Enum.EasingStyle.Quad, Enum.EasingDirection.Out, 0, false, delay or 0), properties)
+        TweenInfo.new(settings.motion and (duration or 0.22) or 0, Enum.EasingStyle.Quart, Enum.EasingDirection.Out, 0, false, delay or 0), properties)
     table.insert(graphTweens, tween)
     tween:Play()
     return tween
@@ -1634,6 +1647,13 @@ local function node(label, x, y, width, selected, callback)
         BorderSizePixel = 0,
     })
     rounded(indicator, 3)
+    if selected and settings.motion then
+        local gradient = object:FindFirstChildOfClass("UIGradient")
+        gradient.Offset = Vector2.new(-0.25, 0)
+        local shimmer = TweenService:Create(gradient, TweenInfo.new(2.4, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true), { Offset = Vector2.new(0.25, 0) })
+        table.insert(graphTweens, shimmer)
+        shimmer:Play()
+    end
     local restTransparency = object.BackgroundTransparency
     object.Position = UDim2.fromOffset(x + 12, y)
     object.BackgroundTransparency, object.TextTransparency = 1, 1
@@ -1772,6 +1792,12 @@ renderGraph = function()
                 local reset = button(panel, "Вернуть исходный", UDim2.fromOffset(8, 342), UDim2.fromOffset(200, 34))
                 reset.Activated:Connect(function() choose(initial) end)
             else moveDetail(entry.frame, 1) end
+            if entry.key == "killFx" then
+                local preview = button(detailBody, "Preview Soul", UDim2.fromOffset(0, 0), UDim2.fromOffset(180, 36))
+                preview.LayoutOrder = 3
+                table.insert(temporaryRows, preview)
+                preview.Activated:Connect(function() settings._soulPreviewRequested = true end)
+            end
             local explanation = text(detailBody, definition[4], {
                 Size = UDim2.new(1, -20, 0, 70), TextWrapped = true,
                 TextXAlignment = Enum.TextXAlignment.Left, TextYAlignment = Enum.TextYAlignment.Top,
@@ -1815,6 +1841,9 @@ local function applyTheme()
     themeLast = signature
     local accent = Color3.fromHSV(settings.menuHue / 360, settings.menuSaturation / 100, settings.menuValue / 100)
     palette.accent = accent
+    for _, object in ipairs(island:GetDescendants()) do
+        if object:IsA("UIStroke") then object.Color = accent end
+    end
     menu.BackgroundColor3 = Color3.fromRGB(12, 12, 15)
     for _, object in ipairs(menu:GetDescendants()) do
         if object:IsA("UIStroke") and object.Name ~= "DecorationStroke" then object.Color = accent; object.Transparency = 0.8 end
@@ -1845,7 +1874,6 @@ local function override(key, instance, property, value)
             local current = instance[property]
             if current == previous.applied then return end
             previous.original = current
-            if previous.reapplied then return end
             previous.reapplied = true
             previous.writing = true
             instance[property] = previous.applied
@@ -1885,7 +1913,11 @@ local function updateLighting()
     override("ClockTime", Lighting, "ClockTime", settings.clock and settings.hour or nil)
     override("FogEnd", Lighting, "FogEnd", settings.noFog and 100000 or nil)
     local seen = {}
-    for _, object in ipairs(Lighting:GetChildren()) do
+    local lightingObjects = Lighting:GetChildren()
+    if workspace.CurrentCamera then
+        for _, effect in ipairs(workspace.CurrentCamera:GetChildren()) do table.insert(lightingObjects, effect) end
+    end
+    for _, object in ipairs(lightingObjects) do
         if object:IsA("Atmosphere") then
             local entry = atmosphericOverrides[object]
             if not entry then
@@ -1893,8 +1925,8 @@ local function updateLighting()
                 atmosphericOverrides[object] = entry
             end
             seen[object] = true
-            override(entry.density, object, "Density", settings.noFog and 0 or nil)
-            override(entry.haze, object, "Haze", settings.noFog and 0 or nil)
+            override(entry.density, object, "Density", (settings.noFog or settings.bright) and 0 or nil)
+            override(entry.haze, object, "Haze", (settings.noFog or settings.bright) and 0 or nil)
         elseif object:IsA("ColorCorrectionEffect") then
             local entry = atmosphericOverrides[object]
             if not entry then
@@ -1918,6 +1950,19 @@ local function updateLighting()
     end
 end
 
+do
+    local cameraConnection
+    local function watchCameraEffects()
+        if cameraConnection then cameraConnection:Disconnect() end
+        local camera = workspace.CurrentCamera
+        cameraConnection = camera and camera.ChildAdded and camera.ChildAdded:Connect(updateLighting)
+        updateLighting()
+    end
+    if Lighting.ChildAdded then connect(Lighting.ChildAdded, updateLighting) end
+    connect(workspace:GetPropertyChangedSignal("CurrentCamera"), watchCameraEffects)
+    table.insert(cleanups, function() if cameraConnection then cameraConnection:Disconnect() end end)
+    watchCameraEffects()
+end
 local occupiedLabels = {}
 local labelMetrics = setmetatable({}, { __mode = "k" })
 local function screenLabel(parent)
@@ -1928,9 +1973,9 @@ local function screenLabel(parent)
         TextWrapped = false, TextTruncate = Enum.TextTruncate.None,
     })
 end
-local function placeLabel(label, value, x, y, size, anchorX, anchorY, camera, color)
+local function placeLabel(label, value, x, y, size, anchorX, anchorY, camera, color, avoidOverlap)
     label.Visible = false
-    if value == "" then return end
+    if value == "" then return 0 end
     local metrics = labelMetrics[label]
     if not metrics or metrics.value ~= value or metrics.size ~= size then
         local measured = game:GetService("TextService"):GetTextSize(value, size, Enum.Font.Gotham, Vector2.new(4096, 100))
@@ -1944,33 +1989,44 @@ local function placeLabel(label, value, x, y, size, anchorX, anchorY, camera, co
     local viewport = camera.ViewportSize
     left = math.clamp(left, 0, math.max(0, viewport.X - width))
     top = math.clamp(top, 0, math.max(0, viewport.Y - height))
-    local originalTop = top
-    local direction = anchorY == 1 and -1 or 1
-    local function overlaps(candidateTop)
-        for _, rectangle in ipairs(occupiedLabels) do
-            if left < rectangle.right + 2 and left + width + 2 > rectangle.left
-                and candidateTop < rectangle.bottom + 2 and candidateTop + height + 2 > rectangle.top then
-                return true
+    local originalLeft = left
+    local function cells(candidateLeft, callback)
+        for gx = math.floor(candidateLeft / 128), math.floor((candidateLeft + width + 2) / 128) do
+            for gy = math.floor(top / 64), math.floor((top + height + 2) / 64) do
+                if callback(gx .. ":" .. gy) then return true end
             end
         end
         return false
     end
-    if overlaps(top) then
-        for step = 1, 2 do
-            local proposed = originalTop + direction * step * (height + 3)
-            if proposed >= 0 and proposed + height <= viewport.Y and not overlaps(proposed) then
-                top = proposed
-                break
+    local function overlaps(candidateLeft)
+        return cells(candidateLeft, function(key)
+            for _, rectangle in ipairs(occupiedLabels[key] or {}) do
+                if candidateLeft < rectangle.right + 2 and candidateLeft + width + 2 > rectangle.left
+                    and top < rectangle.bottom + 2 and top + height + 2 > rectangle.top then return true end
             end
+            return false
+        end)
+    end
+    if avoidOverlap ~= false then
+        for _, shift in ipairs({ metrics.shift or 0, 0, math.min(width + 6, 160), -math.min(width + 6, 160) }) do
+            local proposed = originalLeft + shift
+            if proposed >= 0 and proposed + width <= viewport.X and not overlaps(proposed) then left = proposed; break end
         end
     end
-    table.insert(occupiedLabels, { left = left, top = top, right = left + width, bottom = top + height })
+    metrics.shift = left - originalLeft
+    local rectangle = { left = left, top = top, right = left + width, bottom = top + height }
+    cells(left, function(key)
+        occupiedLabels[key] = occupiedLabels[key] or {}
+        table.insert(occupiedLabels[key], rectangle)
+        return false
+    end)
     label.Position = UDim2.fromOffset(math.round(left), math.round(top))
     label.Size = UDim2.fromOffset(width, height)
     label.Text = value
     label.TextSize = size
     label.TextColor3 = color
     label.Visible = true
+    return metrics.shift
 end
 local bodyNames = {
     Head = true, UpperTorso = true, LowerTorso = true, Torso = true,
@@ -1984,7 +2040,15 @@ local function bodyBounds(camera, candidate)
     local minimum = Vector2.new(math.huge, math.huge)
     local maximum = Vector2.new(-math.huge, -math.huge)
     local found = false
-    for _, part in ipairs(candidate.bodyParts) do
+    local parts = candidate.bodyParts
+    if not (settings.boxes or settings.corners or settings.healthBar or settings.skeleton) then
+        local headPoint = camera:WorldToViewportPoint(candidate.head.Position + Vector3.new(0, candidate.head.Size.Y * 0.5, 0))
+        local feetPoint = camera:WorldToViewportPoint(candidate.root.Position - Vector3.new(0, 3, 0))
+        if headPoint.Z <= 0.1 or feetPoint.Z <= 0.1 then return nil end
+        return Vector2.new(math.min(headPoint.X, feetPoint.X) - 10, math.min(headPoint.Y, feetPoint.Y)),
+            Vector2.new(math.max(headPoint.X, feetPoint.X) + 10, math.max(headPoint.Y, feetPoint.Y))
+    end
+    for _, part in ipairs(parts) do
         if part:IsDescendantOf(workspace) then
             local half = part.Size * 0.5
             for x = -1, 1, 2 do
@@ -2020,14 +2084,57 @@ local function renderLabels(screen, candidate, low, high, camera, color)
     local distance = (candidate.root.Position - camera.CFrame.Position).Magnitude
     if settings.distance then table.insert(lines, string.format("%d st", math.round(distance))) end
     screen.healthLabel.Visible, screen.distanceLabel.Visible = false, false
-    placeLabel(screen.nameLabel, table.concat(lines, "\n"), center, low.Y - 4, size, 0.5, 1, camera, color)
-    placeLabel(screen.weaponLabel, weapon and weapon.Name or "", center, high.Y + 4, size, 0.5, 0, camera, color)
+    local shift = placeLabel(screen.nameLabel, table.concat(lines, "\n"), center, low.Y - 4, size, 0.5, 1, camera, color)
+    if not screen.labelLeader then screen.labelLeader = create("Frame", screen.container, { BorderSizePixel = 0, BackgroundTransparency = 0.45 }) end
+    screen.labelLeader.Visible = screen.nameLabel.Visible and math.abs(shift) > 2
+    screen.labelLeader.BackgroundColor3 = color
+    screen.labelLeader.Position = UDim2.fromOffset(math.round(math.min(center, center + shift)), math.round(low.Y - 3))
+    screen.labelLeader.Size = UDim2.fromOffset(math.round(math.abs(shift)), 1)
+    placeLabel(screen.weaponLabel, weapon and weapon.Name or "", center + shift, high.Y + 4, size, 0.5, 0, camera, color, false)
+end
+
+local worldIndex
+do
+local function initializeWorldIndex()
+    local index, pending, queued, cursor = {}, {}, setmetatable({}, { __mode = "k" }), 1
+    local function enqueue(object)
+        if not queued[object] then queued[object] = true; table.insert(pending, object) end
+    end
+    for _, child in ipairs(workspace:GetChildren()) do enqueue(child) end
+    connect(workspace.DescendantAdded, function(object)
+        if object:IsA("Humanoid") and object.Parent and object.Parent:IsA("Model") then index[object.Parent] = object end
+        enqueue(object)
+    end)
+    worldIndex = { npcs = index }
+    worldIndex.step = function(budget)
+        while cursor <= #pending and budget > 0 do
+            local object = pending[cursor]
+            cursor += 1; budget -= 1
+            if object.Parent and object ~= workspace.CurrentCamera then
+                if object:IsA("Humanoid") and object.Parent:IsA("Model") then index[object.Parent] = object end
+                if not (object:IsA("Model") and Players:GetPlayerFromCharacter(object)) then
+                    for _, child in ipairs(object:GetChildren()) do enqueue(child) end
+                end
+            end
+        end
+        if cursor > #pending then table.clear(pending); cursor = 1 end
+        local count = 0
+        for model, humanoid in pairs(index) do
+            if not model.Parent or not humanoid.Parent then index[model] = nil
+            elseif not Players:GetPlayerFromCharacter(model) and not (workspace.CurrentCamera and model:IsDescendantOf(workspace.CurrentCamera)) then count += 1 end
+        end
+        settings._npcCount = count
+    end
+    table.insert(cleanups, function() table.clear(index); table.clear(pending) end)
+    return worldIndex
+end
+worldIndex = initializeWorldIndex()
 end
 
 local candidates = {}
 local function addCandidate(model, owner)
     local humanoid = model:FindFirstChildOfClass("Humanoid")
-    local root = model:FindFirstChild("HumanoidRootPart")
+    local root = model:FindFirstChild("HumanoidRootPart") or model.PrimaryPart or model:FindFirstChild("Torso") or model:FindFirstChild("UpperTorso")
     if humanoid and humanoid.Health > 0 and root and root:IsA("BasePart") then
         local head = model:FindFirstChild("Head")
         local bodyParts = {}
@@ -2055,13 +2162,10 @@ local function refreshCandidates()
         end
     end
     if (settings.aim and settings.aimDummies) or (settings.esp and settings.espDummies) then
-        local folder = workspace:FindFirstChild("DeltaQATargets")
-        if folder then
-            for _, model in ipairs(folder:GetChildren()) do
-                if model:IsA("Model") and not Players:GetPlayerFromCharacter(model) then
-                    addCandidate(model, nil)
-                end
-            end
+        worldIndex.step(256)
+        for model, humanoid in pairs(worldIndex.npcs) do
+            if model.Parent and humanoid.Health > 0 and not Players:GetPlayerFromCharacter(model)
+                and not (workspace.CurrentCamera and model:IsDescendantOf(workspace.CurrentCamera)) then addCandidate(model, nil) end
         end
     end
 end
@@ -2484,21 +2588,106 @@ local function initializeCameraVisuals()
             fov.writing = false
         end
     end
-    local vegetation, pending, cursor = {}, {}, 1
-    local foliageNames = { leaf = "noLeaves", leaves = "noLeaves", foliage = "noLeaves",
-        grass = "noGrass", grasspatch = "noGrass", tallgrass = "noGrass" }
-    local function queueVegetation(object) table.insert(pending, object) end
-    for _, object in ipairs(workspace:GetChildren()) do queueVegetation(object) end
-    connect(workspace.DescendantAdded, queueVegetation)
-    local function restoreVegetation(object, entry)
-        if entry.original ~= nil and object.Parent and object.LocalTransparencyModifier == 1 then
-            object.LocalTransparencyModifier = entry.original
+    local function initializeVegetation()
+    local tracked, queue, queued, cursor = {}, {}, setmetatable({}, { __mode = "k" }), 1
+    local tick, previousGrass, previousLeaves, discovered = 1, nil, nil, false
+    local terrainState, samples = {}, {}
+    local function enqueue(object)
+        if not queued[object] then queued[object] = true; table.insert(queue, object) end
+    end
+    local function category(object)
+        local key, ancestor, depth = nil, object, 0
+        while ancestor and ancestor ~= workspace and depth < 12 do
+            if ancestor == workspace.CurrentCamera or ancestor:FindFirstChildOfClass("Humanoid") then return nil end
+            local name = string.lower(ancestor.Name):gsub("[%s_%-]", "")
+            local tag = ancestor:GetAttribute("VegetationType")
+            if not key then
+                if name:find("leaves", 1, true) or name:find("leaf", 1, true) or name:find("foliage", 1, true) or tag == "Leaves" then key = "noLeaves"
+                elseif name:find("grass", 1, true) or tag == "Grass" then key = "noGrass" end
+            end
+            ancestor, depth = ancestor.Parent, depth + 1
         end
+        return key
+    end
+    local function restore(object, entry)
+        if entry.original ~= nil and object.Parent and object.LocalTransparencyModifier == 1 then object.LocalTransparencyModifier = entry.original end
         entry.original = nil
     end
+    local function terrainGrass(enabled)
+        local terrain = workspace:FindFirstChildOfClass("Terrain")
+        if not terrain then return "Terrain unavailable" end
+        if terrainState.object ~= terrain then terrainState = { object = terrain } end
+        if enabled and not terrainState.applied then
+            local ok, original = pcall(function() return terrain.Decoration end)
+            if (not ok or type(original) ~= "boolean") and type(gethiddenproperty) == "function" then
+                ok, original = pcall(gethiddenproperty, terrain, "Decoration")
+            end
+            if not ok or type(original) ~= "boolean" then return "Terrain grass control unavailable" end
+            local setOk = pcall(function()
+                if type(sethiddenproperty) == "function" then sethiddenproperty(terrain, "Decoration", false)
+                else terrain.Decoration = false end
+            end)
+            if not setOk then return "Terrain grass control unavailable" end
+            terrainState.original, terrainState.applied = original, true
+        elseif not enabled and terrainState.applied then
+            local ok = pcall(function()
+                if type(sethiddenproperty) == "function" then sethiddenproperty(terrain, "Decoration", terrainState.original)
+                else terrain.Decoration = terrainState.original end
+            end)
+            if ok then terrainState.applied = false end
+        end
+        return terrainState.applied and "Terrain grass hidden" or "Terrain grass native"
+    end
+    for _, child in ipairs(workspace:GetChildren()) do enqueue(child) end
+    connect(workspace.DescendantAdded, enqueue)
     table.insert(cleanups, function()
-        for object, entry in pairs(vegetation) do restoreVegetation(object, entry) end
+        for object, entry in pairs(tracked) do restore(object, entry) end
+        terrainGrass(false)
+        table.clear(tracked); table.clear(queue)
     end)
+    return function(dt)
+        local budget = 160
+        while cursor <= #queue and budget > 0 do
+            local object = queue[cursor]
+            cursor += 1; budget -= 1
+            if object.Parent and object ~= workspace.CurrentCamera and not object:FindFirstChildOfClass("Humanoid") then
+                if object:IsA("BasePart") and not object:IsA("Terrain") then
+                    local key = category(object)
+                    if #samples < 80 then
+                        local path = object:GetFullName()
+                        local lower = string.lower(path)
+                        if key or lower:find("tree", 1, true) or lower:find("bush", 1, true) then
+                            table.insert(samples, { path = path, class = object.ClassName, category = key,
+                                mesh = object:IsA("MeshPart") and object.MeshId or nil })
+                        end
+                    end
+                    if key == "noGrass" and object.CanCollide and object.Size.X > 12 and object.Size.Z > 12 then key = nil end
+                    if key and not tracked[object] then tracked[object] = { key = key }; discovered = true end
+                end
+                for _, child in ipairs(object:GetChildren()) do enqueue(child) end
+            end
+        end
+        if cursor > #queue then table.clear(queue); cursor = 1 end
+        tick += dt
+        if not discovered and tick < 0.5 and previousGrass == settings.noGrass and previousLeaves == settings.noLeaves then return end
+        tick, discovered = 0, false
+        previousGrass, previousLeaves = settings.noGrass, settings.noLeaves
+        local counts = { noGrass = 0, noLeaves = 0 }
+        for object, entry in pairs(tracked) do
+            if not object.Parent then tracked[object] = nil
+            else
+                counts[entry.key] += 1
+                if settings[entry.key] then
+                    if entry.original == nil or object.LocalTransparencyModifier ~= 1 then entry.original = object.LocalTransparencyModifier end
+                    object.LocalTransparencyModifier = 1
+                else restore(object, entry) end
+            end
+        end
+        settings._environmentStatus = { grassParts = counts.noGrass, leafParts = counts.noLeaves, terrain = terrainGrass(settings.noGrass), samples = samples }
+    end
+end
+local updateVegetation = initializeVegetation()
+
     local cameraLast, characterLast, characterConnection, scanTime = nil, nil, nil, 1
     local cameraConnection
     local visorNames = { visor = true, visoroverlay = true, helmetvisor = true,
@@ -2595,27 +2784,7 @@ local function initializeCameraVisuals()
                 shift = Input:IsKeyDown(Enum.KeyCode.LeftShift) or Input:IsKeyDown(Enum.KeyCode.RightShift),
                 equip = settings._equipId, offsetBlend = blend })
         end
-        -- Bounded initial discovery; streamed descendants are queued individually.
-        local budget = 80
-        while cursor <= #pending and budget > 0 do
-            local object = pending[cursor]
-            cursor += 1; budget -= 1
-            if object.Parent and object ~= workspace.CurrentCamera and not object:FindFirstChildOfClass("Humanoid") then
-                local key = foliageNames[normalized(object)]
-                if key and object:IsA("BasePart") then vegetation[object] = { key = key } end
-                for _, child in ipairs(object:GetChildren()) do queueVegetation(child) end
-            end
-        end
-        if cursor > #pending then table.clear(pending); cursor = 1 end
-        for object, entry in pairs(vegetation) do
-            if not object.Parent then vegetation[object] = nil
-            elseif settings[entry.key] then
-                if entry.original == nil or object.LocalTransparencyModifier ~= 1 then
-                    entry.original = object.LocalTransparencyModifier
-                end
-                object.LocalTransparencyModifier = 1
-            else restoreVegetation(object, entry) end
-        end
+        updateVegetation(dt)
         scanTime += dt
         if characterLast ~= player.Character then
             if characterConnection then characterConnection:Disconnect() end
@@ -2763,6 +2932,105 @@ end
 updateLootESP = initializeLootESP()
 end
 
+local soulFx
+do
+local function initializeSoulFx()
+    local active, watched, pending, elapsed, poll = {}, {}, {}, 0, 1
+    local function remove(entry)
+        for _, tween in ipairs(entry.tweens) do tween:Cancel() end
+        entry.model:Destroy()
+    end
+    local function spawn(model)
+        if not settings.killFx or not model or not model.Parent then return false end
+        if #active >= 4 then remove(table.remove(active, 1)) end
+        local ghost = create("Model", workspace, { Name = "OktanSoul" })
+        local entry = { model = ghost, tweens = {}, expires = elapsed + 1.8 }
+        local count = 0
+        for _, part in ipairs(model:GetChildren()) do
+            if part:IsA("BasePart") and bodyNames[part.Name] and count < 16 then
+                local ok, copy = pcall(function() return part:Clone() end)
+                if ok and copy then
+                    for _, child in ipairs(copy:GetDescendants()) do
+                        if child:IsA("JointInstance") or child:IsA("Constraint") or child:IsA("WeldConstraint") or child:IsA("LuaSourceContainer")
+                            or child:IsA("ParticleEmitter") or child:IsA("SurfaceAppearance") or child:IsA("SurfaceGui") then child:Destroy() end
+                    end
+                    copy.Anchored, copy.CanCollide, copy.CanTouch, copy.CanQuery = true, false, false, false
+                    copy.CastShadow, copy.Transparency, copy.LocalTransparencyModifier = false, 0.5, 0
+                    copy.Material, copy.Color = Enum.Material.Neon, Color3.fromRGB(185, 230, 255)
+                    copy.CFrame, copy.Parent = part.CFrame, ghost
+                    local tween = TweenService:Create(copy, TweenInfo.new(1.7, Enum.EasingStyle.Sine, Enum.EasingDirection.Out), {
+                        CFrame = part.CFrame + Vector3.new(0, 4, 0), Transparency = 1,
+                    })
+                    table.insert(entry.tweens, tween); tween:Play(); count += 1
+                end
+            end
+        end
+        if count == 0 then ghost:Destroy(); return false end
+        table.insert(active, entry)
+        settings._soulStatus = "Confirmed local kill: soul spawned"
+        return true
+    end
+    local function ownsKill(humanoid, model, victim)
+        local creator = humanoid:FindFirstChild("creator") or humanoid:FindFirstChild("Creator")
+        if creator and creator:IsA("ObjectValue") and creator.Value == player then return true end
+        if model:GetAttribute("KillerUserId") == player.UserId and player.UserId ~= nil then return true end
+        local records = game:GetService("ReplicatedStorage"):FindFirstChild("Players")
+        local record = records and records:FindFirstChild(victim and victim.Name or model.Name)
+        local status = record and record:FindFirstChild("Status")
+        local variables = status and status:FindFirstChild("GameplayVariables")
+        local killer = variables and variables:GetAttribute("DeathCausedBy")
+        return killer ~= nil and killer ~= "" and (killer == player.Name or (player.UserId ~= nil and tostring(killer) == tostring(player.UserId)))
+    end
+    local function watch(victim)
+        local model = victim.Character
+        local humanoid = model and model:FindFirstChildOfClass("Humanoid")
+        if not humanoid or humanoid.Health <= 0 or watched[humanoid] or not humanoid.Died then return end
+        watched[humanoid] = humanoid.Died:Connect(function()
+            if watched[humanoid] then watched[humanoid]:Disconnect(); watched[humanoid] = nil end
+            if not settings.killFx then return end
+            if ownsKill(humanoid, model, victim) then spawn(model)
+            elseif #pending < 16 then table.insert(pending, { humanoid = humanoid, model = model, victim = victim, expires = elapsed + 0.8 }) end
+        end)
+    end
+    soulFx = { preview = spawn }
+    soulFx.step = function(dt)
+        elapsed += dt; poll += dt
+        if settings._soulPreviewRequested then
+            settings._soulPreviewRequested = nil
+            spawn(player.Character)
+        end
+        if poll >= 0.5 then
+            poll = 0
+            if settings.killFx then
+                for _, victim in ipairs(Players:GetPlayers()) do if victim ~= player then watch(victim) end end
+            end
+            for humanoid, connection in pairs(watched) do
+                if not humanoid.Parent then connection:Disconnect(); watched[humanoid] = nil end
+            end
+        end
+        for i = #pending, 1, -1 do
+            local death = pending[i]
+            if settings.killFx and death.model.Parent and ownsKill(death.humanoid, death.model, death.victim) then
+                spawn(death.model); table.remove(pending, i)
+            elseif not settings.killFx or not death.model.Parent or elapsed >= death.expires then
+                table.remove(pending, i)
+                settings._soulStatus = "No confirmed killer attribution; effect skipped"
+            end
+        end
+        for i = #active, 1, -1 do
+            if not settings.killFx or elapsed >= active[i].expires then remove(table.remove(active, i)) end
+        end
+    end
+    table.insert(cleanups, function()
+        for _, connection in pairs(watched) do connection:Disconnect() end
+        for _, entry in ipairs(active) do remove(entry) end
+        table.clear(watched); table.clear(active); table.clear(pending)
+    end)
+    return soulFx
+end
+soulFx = initializeSoulFx()
+end
+
 local renderName = "Oktan_" .. HttpService:GenerateGUID(false)
 local unloaded = false
 local function unload()
@@ -2798,6 +3066,7 @@ RunService:BindToRenderStep(renderName, Enum.RenderPriority.Last.Value + 1, func
     local camera = workspace.CurrentCamera
     updateHud(dt)
     updateWinter(dt)
+    soulFx.step(dt)
     updateLootESP(dt, camera)
 
     applyTheme()
@@ -2856,18 +3125,26 @@ RunService:BindToRenderStep(renderName, Enum.RenderPriority.Last.Value + 1, func
         ring.Size = UDim2.fromOffset(renderState.shownRingRadius * 2, renderState.shownRingRadius * 2)
     end
     local showCross = camera ~= nil and inputReady and settings.crosshair and not settings._ads
-    for _, arm in ipairs(crosshair) do arm.Visible = showCross end
-    if renderState.shownCrossLength ~= settings.length or renderState.shownCrossGap ~= settings.gap then
-        renderState.shownCrossLength = settings.length
-        renderState.shownCrossGap = settings.gap
-        local length = renderState.shownCrossLength
-        local offset = renderState.shownCrossGap + length / 2
+    local style, thickness = settings.crossStyle, settings.crossWidth
+    for _, arm in ipairs(crosshair) do arm.Visible = showCross and style ~= 2 end
+    crosshair.dot.Visible = showCross and style ~= 1
+    if camera and (renderState.crossStyle ~= style or renderState.crossWidth ~= thickness or renderState.crossLength ~= settings.length or renderState.crossGap ~= settings.gap or renderState.crossViewport ~= camera.ViewportSize) then
+        renderState.crossStyle, renderState.crossWidth, renderState.crossLength, renderState.crossGap, renderState.crossViewport = style, thickness, settings.length, settings.gap, camera.ViewportSize
+        local cx, cy = math.floor(camera.ViewportSize.X / 2), math.floor(camera.ViewportSize.Y / 2)
+        local length, gap = settings.length, settings.gap
+        local half = math.floor(thickness / 2)
+        local rectangles = {
+            { cx - gap - length, cy - half, length, thickness }, { cx + gap, cy - half, length, thickness },
+            { cx - half, cy - gap - length, thickness, length }, { cx - half, cy + gap, thickness, length },
+        }
         for index, arm in ipairs(crosshair) do
-            local horizontal = index <= 2
-            local signedOffset = index % 2 == 0 and offset or -offset
-            arm.Size = horizontal and UDim2.fromOffset(length, 2) or UDim2.fromOffset(2, length)
-            arm.Position = UDim2.new(0.5, horizontal and signedOffset or 0, 0.5, horizontal and 0 or signedOffset)
+            local r = rectangles[index]
+            arm.AnchorPoint = Vector2.new(0, 0)
+            arm.Position, arm.Size = UDim2.fromOffset(r[1], r[2]), UDim2.fromOffset(r[3], r[4])
         end
+        local diameter = thickness + 2
+        crosshair.dot.Position = UDim2.fromOffset(cx - math.floor(diameter / 2), cy - math.floor(diameter / 2))
+        crosshair.dot.Size = UDim2.fromOffset(diameter, diameter)
     end
     if camera and camera.ViewportSize ~= renderState.viewportSize then
         renderState.viewportSize = camera.ViewportSize
