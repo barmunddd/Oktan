@@ -1,4 +1,4 @@
--- Oktan 9. Full standalone source. Paste all of this file into Executor.
+-- Oktan 10. Full standalone source. Paste all of this file into Executor.
 -- Configuration files are relative to the executor's filesystem workspace.
 if not game:IsLoaded() then game.Loaded:Wait() end
 local Players = game:GetService("Players")
@@ -23,6 +23,14 @@ end
 
 -- Every exposed setting has its own description, bounds and keyboard actions.
 local definitions = {
+    { "aimEase", 220, "Aim Ease", "Время плавного входа в наведение в миллисекундах. Меньше — быстрее захват.", "Наведение", 50, 500 },
+    { "aimFilter", 14, "Target Filter", "Сглаживание дрожания точки цели. Меньше — мягче, больше — точнее следует движению.", "Наведение", 5, 30 },
+    { "graphics", false, "Visual Studio", "Включает локальные цветовые сцены, небо и эффекты освещения.", "Мир" },
+    { "gfxTier", 1, "PC Profile", "1 — Low; 2 — Balanced; 3 — Ultra. Меняет набор эффектов и качество Chrono Echo.", "Мир", 1, 3 },
+    { "gfxLook", 1, "Scene", "1 — Arctic; 2 — Golden; 3 — Neon; 4 — Cinema; 5 — Clean.", "Мир", 1, 5 },
+    { "echo", false, "Chrono Echo", "3D-окно с записью твоих движений и задержанным воспроизведением. Снимается только твой персонаж.", "Настройки" },
+    { "echoDelay", 2, "Echo Delay", "Задержка 3D-воспроизведения в секундах. Запись хранится только в памяти.", "Настройки", 1, 6 },
+    { "echoFreeze", false, "Freeze Echo", "Замораживает текущий кадр в 3D-окне. Можно назначить отдельную клавишу.", "Настройки" },
     { "motion", true, "Motion", "Плавное появление меню и переливы выбранных разделов.", "Настройки" },
     { "killFx", true, "Soul FX", "Поднимает призрачный силуэт при подтверждённом вашем убийстве. Требуется информация об убийце от игры.", "Настройки" },
     { "crossStyle", 1, "Cross Style", "1 — крестик; 2 — точка; 3 — крестик с точкой.", "Камера", 1, 3 },
@@ -69,7 +77,7 @@ local definitions = {
     { "head", true, "Head Aim", "Включено — Head.", "Наведение" },
     { "ring", true, "FOV Circle", "Показывает радиус выбора цели вокруг центра экрана при активном наведении и закрытом меню.", "Наведение" },
     { "radius", 140, "FOV Radius", "Расстояние от центра экрана, внутри которого выбирается цель.", "Наведение", 25, 400 },
-    { "smooth", 12, "Aim Speed", "Большое значение быстрее поворачивает камеру.", "Наведение", 2, 45 },
+    { "smooth", 12, "Aim Speed", "Скорость плавного доворота. Aim Ease управляет входом, Target Filter сглаживает движение цели.", "Наведение", 2, 45 },
     { "esp", false, "ESP", "Общий переключатель всех маркеров персонажей.", "ESP" },
     { "espPlayers", true, "Players", "Отображает ESP на персонажах других игроков.", "ESP" },
     { "espDummies", false, "NPCs", "Показывает живых NPC с Humanoid в загруженной части мира.", "ESP" },
@@ -325,7 +333,7 @@ local title = text(menu, "OKTAN", {
     Position = UDim2.fromOffset(24, 15), Size = UDim2.fromOffset(480, 32),
     TextSize = 23, Font = Enum.Font.GothamBold, TextXAlignment = Enum.TextXAlignment.Left,
 })
-text(menu, "OKTAN 09   /   MOTION", {
+text(menu, "OKTAN 10   /   ECHO", {
     Position = UDim2.fromOffset(25, 48), Size = UDim2.fromOffset(450, 18),
     TextColor3 = palette.muted, TextXAlignment = Enum.TextXAlignment.Left,
 })
@@ -623,6 +631,73 @@ connect(unloadButton.Activated, function() unloadSignal:Fire() end)
 describe(saveButton, "Сохраняет настройки и клавиши в workspace исполнителя. Обычно сохранение происходит автоматически через секунду после изменения.")
 describe(resetButton, "Возвращает все настройки и клавиши к исходным значениям. Новые значения автоматически сохранятся.")
 describe(unloadButton, "Сохраняет конфиг, удаляет интерфейс и ESP, отключает обработчики и возвращает изменённые параметры освещения и камеры.")
+do
+    actionsRow.Size = UDim2.new(1, 0, 0, 110)
+    local export = button(actionsRow, "Weapon Debug", UDim2.fromOffset(12, 58), UDim2.fromOffset(180, 32))
+    describe(export, "Возьми оружие и нажми: сохранит его доступные параметры и пути конфигураций в Oktan-weapon-debug.json.")
+    connect(export.Activated, function()
+        if type(writefile) ~= "function" then configStatus = "Запись файлов недоступна"; return end
+        local ok, message = pcall(function()
+            local report = { version = 1, placeId = game.PlaceId, roots = {}, modules = {}, truncated = false }
+            local storage = game:GetService("ReplicatedStorage")
+            local records = storage:FindFirstChild("Players")
+            local record = records and records:FindFirstChild(player.Name)
+            local status = record and record:FindFirstChild("Status")
+            local variables = status and status:FindFirstChild("GameplayVariables")
+            local equipped = variables and variables:FindFirstChild("EquippedTool")
+            local function summary(object)
+                local row = { path = object:GetFullName(), class = object.ClassName, attributes = {} }
+                for key, value in pairs(object:GetAttributes()) do
+                    local lower = string.lower(key)
+                    if not lower:find("key", 1, true) and not lower:find("token", 1, true) and not lower:find("secret", 1, true) then
+                        local kind = type(value)
+                        if kind == "number" or kind == "boolean" then row.attributes[key] = value
+                        elseif kind == "string" then row.attributes[key] = value:sub(1, 160) end
+                    end
+                end
+                if object:IsA("NumberValue") or object:IsA("IntValue") or object:IsA("BoolValue") then row.value = object.Value
+                elseif object:IsA("StringValue") then row.value = object.Value:sub(1, 160)
+                elseif object:IsA("ObjectValue") then row.reference = object.Value and object.Value:GetFullName() end
+                return row
+            end
+            local function scan(root)
+                if not root then return end
+                local rows, queue, cursor = {}, { { root, 0 } }, 1
+                while cursor <= #queue and #rows < 800 do
+                    local item = queue[cursor]; cursor += 1
+                    table.insert(rows, summary(item[1]))
+                    if item[2] < 8 then
+                        for _, child in ipairs(item[1]:GetChildren()) do table.insert(queue, { child, item[2] + 1 }) end
+                    end
+                end
+                if cursor <= #queue then report.truncated = true end
+                table.insert(report.roots, rows)
+            end
+            scan(equipped and equipped:IsA("ObjectValue") and equipped.Value)
+            local character = player.Character
+            scan(character and character:FindFirstChild("HumanoidRootPart"))
+            local camera = workspace.CurrentCamera
+            local viewmodel = camera and camera:FindFirstChild("ViewModel")
+            scan(viewmodel and viewmodel:FindFirstChild("Item"))
+            local queue, cursor, visited = {}, 1, 0
+            for _, child in ipairs(storage:GetChildren()) do if child.Name ~= "Players" then table.insert(queue, child) end end
+            while cursor <= #queue and visited < 6000 and #report.modules < 400 do
+                local object = queue[cursor]; cursor += 1; visited += 1
+                local path = string.lower(object:GetFullName())
+                if object:IsA("ModuleScript") and (path:find("weapon", 1, true) or path:find("recoil", 1, true)
+                    or path:find("spread", 1, true) or path:find("projectile", 1, true) or path:find("gun", 1, true)) then
+                    table.insert(report.modules, summary(object))
+                end
+                for _, child in ipairs(object:GetChildren()) do table.insert(queue, child) end
+            end
+            report.moduleScanTruncated = cursor <= #queue
+            writefile("Oktan-weapon-debug.json", game:GetService("HttpService"):JSONEncode(report))
+        end)
+        configStatus = ok and "Сохранено: Oktan-weapon-debug.json" or "Ошибка Weapon Debug"
+        if not ok then warn("[Oktan] Weapon Debug: " .. tostring(message)) end
+    end)
+end
+
 local raidReport = button(actionsRow, "Export Debug", UDim2.fromOffset(516, 12), UDim2.fromOffset(184, 32))
 describe(raidReport, "Если Kills показывает прочерк, сохраните структуру рейдовых данных для подключения счётчика.")
 connect(raidReport.Activated, function()
@@ -646,6 +721,8 @@ connect(raidReport.Activated, function()
         end
         report.camera = { ads = settings._ads, nativeFov = settings._nativeFov, rawRmb = Input:IsMouseButtonPressed(Enum.UserInputType.MouseButton2), fov = workspace.CurrentCamera and workspace.CurrentCamera.FieldOfView, viewmodel = settings.viewmodel, viewmodelStatus = settings._viewmodelStatus }
         report.cameraTrace = settings._cameraTrace
+        report.visualStudio = settings._graphicsStatus
+        report.chronoEcho = settings._echoStatus
         report.environment = settings._environmentStatus
         report.npcs = settings._npcCount
         report.soulFx = settings._soulStatus
@@ -1373,12 +1450,12 @@ describe(search, "Ищет по всем разделам, названиям и
 local treeGroups = {
     ["Наведение"] = { "Наведение", "Цели и проверки", "Область и плавность" },
     ESP = { "Общее", "Подписи", "Геометрия", "Цвет и оформление", "Loot" },
-    ["Мир"] = { "Освещение", "Vegetation" },
+    ["Мир"] = { "Освещение", "Vegetation", "Visual Studio" },
     ["Камера"] = { "Зум", "Прицел", "Vision", "Viewmodel" },
     ["Бинды"] = { "Инвентарь", "Dynamic Island", "Управление", "Назначения функций" },
     ["Настройки"] = { "Оформление", "Клиент" },
 }
-local settingGroup = { motion = "Оформление", killFx = "Оформление", crossStyle = "Прицел", crossWidth = "Прицел", noLeaves = "Vegetation", noGrass = "Vegetation", corpseEsp = "Loot", itemEsp = "Loot", lootThrough = "Loot", lootRange = "Loot", lootTextSize = "Loot",
+local settingGroup = { aimEase = "Область и плавность", aimFilter = "Область и плавность", graphics = "Visual Studio", gfxTier = "Visual Studio", gfxLook = "Visual Studio", echo = "Оформление", echoDelay = "Оформление", echoFreeze = "Оформление", motion = "Оформление", killFx = "Оформление", crossStyle = "Прицел", crossWidth = "Прицел", noLeaves = "Vegetation", noGrass = "Vegetation", corpseEsp = "Loot", itemEsp = "Loot", lootThrough = "Loot", lootRange = "Loot", lootTextSize = "Loot",
     noVisor = "Vision", cameraFov = "Vision", cameraFovValue = "Vision",
     viewmodel = "Viewmodel", vmX = "Viewmodel", vmY = "Viewmodel", vmZ = "Viewmodel", sticky = "Наведение", noFog = "Освещение", bubbles = "Оформление", snow = "Оформление", snowDrifts = "Оформление", friendHats = "Оформление", espFps = "Цвет и оформление", adaptiveText = "Подписи",
     aim = "Наведение", aimPlayers = "Цели и проверки", aimDummies = "Цели и проверки",
@@ -1791,6 +1868,20 @@ renderGraph = function()
                 end)
                 local reset = button(panel, "Вернуть исходный", UDim2.fromOffset(8, 342), UDim2.fromOffset(200, 34))
                 reset.Activated:Connect(function() choose(initial) end)
+            elseif entry.key == "gfxTier" or entry.key == "gfxLook" then
+                local names = entry.key == "gfxTier" and { "Low", "Balanced", "Ultra" } or { "Arctic", "Golden", "Neon", "Cinema", "Clean" }
+                local panel = create("Frame", detailBody, { Size = UDim2.new(1, -20, 0, 95), BackgroundTransparency = 1, LayoutOrder = 1 })
+                table.insert(temporaryRows, panel)
+                local buttons = {}
+                for index, name in ipairs(names) do
+                    local option = button(panel, name, UDim2.fromOffset(10 + (index - 1) * 132, 24), UDim2.fromOffset(120, 42))
+                    buttons[index] = option
+                    option.TextColor3 = index == settings[entry.key] and palette.accent or palette.muted
+                    option.Activated:Connect(function()
+                        setValue(entry.key, index)
+                        for i, item in ipairs(buttons) do item.TextColor3 = i == index and palette.accent or palette.muted end
+                    end)
+                end
             else moveDetail(entry.frame, 1) end
             if entry.key == "killFx" then
                 local preview = button(detailBody, "Preview Soul", UDim2.fromOffset(0, 0), UDim2.fromOffset(180, 36))
@@ -1927,7 +2018,7 @@ local function updateLighting()
             seen[object] = true
             override(entry.density, object, "Density", (settings.noFog or settings.bright) and 0 or nil)
             override(entry.haze, object, "Haze", (settings.noFog or settings.bright) and 0 or nil)
-        elseif object:IsA("ColorCorrectionEffect") then
+        elseif object:IsA("ColorCorrectionEffect") and object.Name ~= "OktanGrade" then
             local entry = atmosphericOverrides[object]
             if not entry then
                 entry = { enabled = {} }
@@ -2346,13 +2437,12 @@ local function updateMarkers(camera)
     end)
 end
 
-local castParams = RaycastParams.new()
-castParams.FilterType = Enum.RaycastFilterType.Exclude
-castParams.IgnoreWater = true
-local lockedModel, aimRotation
+local aimContext = { ray = RaycastParams.new() }
+aimContext.ray.FilterType = Enum.RaycastFilterType.Exclude
+aimContext.ray.IgnoreWater = true
 local function aimAt(camera, deltaTime)
     local character = player.Character
-    castParams.FilterDescendantsInstances = character and { character, camera } or { camera }
+    aimContext.ray.FilterDescendantsInstances = character and { character, camera } or { camera }
     local center = camera.ViewportSize * 0.5
     local origin = camera.CFrame.Position
     local bestPosition, bestModel
@@ -2370,9 +2460,9 @@ local function aimAt(camera, deltaTime)
             if visible and projected.Z > 0 then
                 local errorPixels = (Vector2.new(projected.X, projected.Y) - center).Magnitude
                 local score = errorPixels
-                if settings.sticky and candidate.model == lockedModel then score *= 0.65 end
+                if settings.sticky and candidate.model == aimContext.locked then score *= 0.65 end
                 if errorPixels <= settings.radius and score < bestError then
-                    local hit = settings.wall and workspace:Raycast(origin, point - origin, castParams)
+                    local hit = settings.wall and workspace:Raycast(origin, point - origin, aimContext.ray)
                     if not hit or hit.Instance:IsDescendantOf(candidate.model) then
                         bestError, bestPosition, bestModel = score, point, candidate.model
                     end
@@ -2381,15 +2471,22 @@ local function aimAt(camera, deltaTime)
         end
     end
     if bestPosition then
-        if lockedModel ~= bestModel then aimRotation = camera.CFrame.Rotation end
-        lockedModel = bestModel
-        local base = CFrame.new(origin) * (aimRotation or camera.CFrame.Rotation)
-        local goal = CFrame.lookAt(origin, bestPosition)
-        local nextFrame = base:Lerp(goal, 1 - math.exp(-settings.smooth * math.min(deltaTime, 0.1)))
-        aimRotation = nextFrame.Rotation
-        camera.CFrame = nextFrame
+        if aimContext.locked ~= bestModel or not aimContext.filter then aimContext.filter = { point = bestPosition, engagement = 0 } end
+        aimContext.locked = bestModel
+        local dt = math.min(math.max(deltaTime, 0), 0.05)
+        aimContext.filter.engagement = math.min(1, aimContext.filter.engagement + dt / (settings.aimEase / 1000))
+        aimContext.filter.point += (bestPosition - aimContext.filter.point) * (1 - math.exp(-settings.aimFilter * dt))
+        local lag = bestPosition - aimContext.filter.point
+        if lag.Magnitude > 0.45 then aimContext.filter.point = bestPosition - lag * (0.45 / lag.Magnitude) end
+        local t = aimContext.filter.engagement
+        local ease = t * t * (3 - 2 * t)
+        local alpha = 1 - math.exp(-settings.smooth * ease * dt)
+        if alpha > 0 then
+            local goal = CFrame.lookAt(origin, aimContext.filter.point, camera.CFrame.UpVector)
+            camera.CFrame = camera.CFrame:Lerp(goal, alpha)
+        end
     else
-        lockedModel, aimRotation = nil, nil
+        aimContext.locked, aimContext.filter = nil, nil
     end
 end
 
@@ -3031,6 +3128,198 @@ end
 soulFx = initializeSoulFx()
 end
 
+local visualStudio
+do
+local function initializeVisualStudio()
+    local owned, keys, createdSky, sky, signature = {}, {}, nil, nil, nil
+    local elapsed = 1
+    local looks = {
+        { name = "Arctic", tint = Color3.fromRGB(205, 231, 255), contrast = 0.06, saturation = -0.08, exposure = 0.12, time = 13.5 },
+        { name = "Golden", tint = Color3.fromRGB(255, 227, 190), contrast = 0.08, saturation = 0.08, exposure = 0.06, time = 17.4 },
+        { name = "Neon", tint = Color3.fromRGB(206, 199, 255), contrast = 0.12, saturation = 0.18, exposure = 0.15, time = 21.5 },
+        { name = "Cinema", tint = Color3.fromRGB(215, 235, 232), contrast = 0.13, saturation = -0.2, exposure = 0.03, time = 16.3 },
+        { name = "Clean", tint = Color3.fromRGB(255, 255, 255), contrast = 0.03, saturation = 0.02, exposure = 0.08, time = 14 },
+    }
+    local function property(name, object, field, value)
+        if not keys[name] then keys[name] = {} end
+        override(keys[name], object, field, value)
+    end
+    local function effect(class, name)
+        if not owned[name] then owned[name] = create(class, Lighting, { Name = name }) end
+        return owned[name]
+    end
+    local function release()
+        for _, key in pairs(keys) do
+            local entry = overrides[key]
+            if entry then override(key, entry.instance, entry.property, nil) end
+        end
+        for name, object in pairs(owned) do object:Destroy(); owned[name] = nil end
+        if createdSky then createdSky:Destroy(); createdSky = nil end
+        sky, signature = nil, nil
+    end
+    table.insert(cleanups, release)
+    return { step = function(dt)
+        elapsed += dt
+        if not settings.graphics then
+            if signature then release() end
+            settings._graphicsStatus = "Off"
+            return
+        end
+        local nextSignature = table.concat({ settings.gfxTier, settings.gfxLook, tostring(settings.bright), tostring(settings.clock) }, ":")
+        if elapsed < 0.2 and signature == nextSignature then return end
+        elapsed = 0
+        signature = nextSignature
+        local tier, look = settings.gfxTier, looks[settings.gfxLook]
+        local grade = effect("ColorCorrectionEffect", "OktanGrade")
+        grade.Enabled, grade.TintColor, grade.Contrast, grade.Saturation = true, look.tint, look.contrast, look.saturation
+        grade.Brightness = 0
+        property("exposure", Lighting, "ExposureCompensation", not settings.bright and look.exposure or nil)
+        property("time", Lighting, "ClockTime", not settings.clock and look.time or nil)
+        local shadows
+        if not settings.bright and tier == 1 then shadows = false end
+        property("shadows", Lighting, "GlobalShadows", shadows)
+        if tier >= 2 then
+            local bloom = effect("BloomEffect", "OktanBloom")
+            bloom.Enabled, bloom.Intensity, bloom.Size, bloom.Threshold = true, tier == 3 and 0.16 or 0.08, 18, 1.2
+        elseif owned.OktanBloom then owned.OktanBloom:Destroy(); owned.OktanBloom = nil end
+        if tier == 3 then
+            local rays = effect("SunRaysEffect", "OktanSunRays")
+            rays.Enabled, rays.Intensity, rays.Spread = true, 0.035, 0.65
+            local depth = effect("DepthOfFieldEffect", "OktanDepth")
+            depth.Enabled, depth.FocusDistance, depth.InFocusRadius, depth.NearIntensity, depth.FarIntensity = true, 70, 140, 0, 0.06
+        else
+            for _, name in ipairs({ "OktanSunRays", "OktanDepth" }) do if owned[name] then owned[name]:Destroy(); owned[name] = nil end end
+        end
+        if not sky or not sky.Parent then
+            sky = Lighting:FindFirstChildOfClass("Sky")
+            if not sky then createdSky = create("Sky", Lighting, { Name = "OktanSky" }); sky = createdSky end
+        end
+        for face, suffix in pairs({ Bk = "bk", Dn = "dn", Ft = "ft", Lf = "lf", Rt = "rt", Up = "up" }) do
+            property("sky" .. face, sky, "Skybox" .. face, "rbxasset://textures/sky/sky512_" .. suffix .. ".tex")
+        end
+        property("stars", sky, "StarCount", look.name == "Neon" and 4500 or 1800)
+        property("sun", sky, "CelestialBodiesShown", true)
+        settings._graphicsStatus = look.name .. " / " .. ({ "Low", "Balanced", "Ultra" })[tier]
+    end }
+end
+visualStudio = initializeVisualStudio()
+end
+
+local chronoEcho
+do
+local function initializeChronoEcho()
+    local frames, clones, trails = {}, {}, {}
+    local panel, viewport, viewCamera, header, caption, world, avatar
+    local priority = { Head = 1, UpperTorso = 2, Torso = 2, LeftUpperArm = 3, ["Left Arm"] = 3,
+        RightUpperArm = 4, ["Right Arm"] = 4, LeftUpperLeg = 5, ["Left Leg"] = 5, RightUpperLeg = 6, ["Right Leg"] = 6, LowerTorso = 7 }
+    local elapsed, sampleClock, renderClock, lastCharacter, lastTier = 0, 0, 0, nil, nil
+    local function clear()
+        table.clear(frames); table.clear(clones); table.clear(trails)
+        if panel then panel:Destroy() end
+        panel, viewport, viewCamera, world, avatar = nil, nil, nil, nil, nil
+        lastCharacter, lastTier = nil, nil
+    end
+    table.insert(cleanups, clear)
+    local function ensureUi()
+        if panel then return end
+        panel = create("Frame", gui, { Name = "OktanChronoEcho", Position = UDim2.new(0, 18, 1, -238), Size = UDim2.fromOffset(304, 220), BackgroundColor3 = Color3.fromRGB(10, 15, 24), BackgroundTransparency = 0.08, BorderSizePixel = 0 })
+        rounded(panel, 18); stroke(panel, palette.accent).Transparency = 0.25
+        header = text(panel, "CHRONO ECHO", { Position = UDim2.fromOffset(14, 7), Size = UDim2.fromOffset(276, 28), TextSize = 12, TextColor3 = palette.accent }, "TextButton")
+        header.Activated:Connect(function() setValue("echoFreeze", not settings.echoFreeze) end)
+        viewport = create("ViewportFrame", panel, { Position = UDim2.fromOffset(8, 38), Size = UDim2.fromOffset(288, 150), BackgroundTransparency = 1, Ambient = Color3.fromRGB(190, 210, 255), LightColor = Color3.fromRGB(220, 235, 255) })
+        world = create("WorldModel", viewport)
+        avatar = create("Model", world)
+        viewCamera = create("Camera", viewport, { FieldOfView = 48 })
+        viewport.CurrentCamera = viewCamera
+        caption = text(panel, "Recording memory...", { Position = UDim2.fromOffset(14, 190), Size = UDim2.fromOffset(276, 22), TextSize = 11, TextColor3 = palette.muted })
+    end
+    local function copyPart(part)
+        local ok, copy = pcall(function() return part:Clone() end)
+        if not ok or not copy then return nil end
+        for _, child in ipairs(copy:GetDescendants()) do
+            if child:IsA("JointInstance") or child:IsA("Constraint") or child:IsA("WeldConstraint")
+                or child:IsA("LuaSourceContainer") or child:IsA("SurfaceAppearance") or child:IsA("SurfaceGui")
+                or child:IsA("ParticleEmitter") then child:Destroy() end
+        end
+        copy.Anchored, copy.CanCollide, copy.CanTouch, copy.CanQuery = true, false, false, false
+        copy.CastShadow, copy.LocalTransparencyModifier, copy.Transparency = false, 0, 0.35
+        copy.Material, copy.Color, copy.Parent = Enum.Material.Neon, palette.accent, avatar
+        return copy
+    end
+    return { step = function(dt)
+        elapsed += dt
+        if not settings.echo then
+            if panel then clear() end
+            settings._echoStatus = "Off"
+            return
+        end
+        local character = player.Character
+        if character ~= lastCharacter or lastTier ~= settings.gfxTier then
+            clear(); lastCharacter, lastTier = character, settings.gfxTier
+        end
+        ensureUi()
+        local root = character and character:FindFirstChild("HumanoidRootPart")
+        if not root then caption.Text = "Waiting for character..."; return end
+        local tier = settings.gfxTier
+        local interval, limit = ({ 0.2, 0.12, 0.08 })[tier], ({ 6, 12, 16 })[tier]
+        sampleClock += dt; renderClock += dt
+        if sampleClock >= interval then
+            sampleClock = 0
+            local pose, count = {}, 0
+            local body = character:GetChildren()
+            table.sort(body, function(a, b)
+                local ap, bp = priority[a.Name] or 100, priority[b.Name] or 100
+                if ap == bp then return a.Name < b.Name end
+                return ap < bp
+            end)
+            for _, part in ipairs(body) do
+                if part:IsA("BasePart") and bodyNames[part.Name] and count < limit then
+                    if not clones[part.Name] then clones[part.Name] = copyPart(part) end
+                    if clones[part.Name] then pose[part.Name] = part.CFrame; count += 1 end
+                end
+            end
+            table.insert(frames, { time = elapsed, root = root.CFrame, pose = pose })
+            while #frames > 90 or (#frames > 1 and elapsed - frames[1].time > 8) do table.remove(frames, 1) end
+        end
+        settings._echoStatus = { frames = #frames, parts = limit, delay = settings.echoDelay, frozen = settings.echoFreeze }
+        header.Text = settings.echoFreeze and "CHRONO ECHO  /  FROZEN" or "CHRONO ECHO  /  LIVE MEMORY"
+        header.TextColor3 = palette.accent
+        panel:FindFirstChildOfClass("UIStroke").Color = palette.accent
+        if renderClock < 1 / ({ 15, 30, 60 })[tier] then return end
+        renderClock = 0
+        if settings.echoFreeze then caption.Text = "Frozen • click title to resume"; return end
+        local target, a, b = elapsed - settings.echoDelay, nil, nil
+        for _, frame in ipairs(frames) do
+            if frame.time <= target then a = frame elseif a then b = frame; break end
+        end
+        if not a then caption.Text = "Recording memory..."; return end
+        b = b or a
+        local alpha = a == b and 0 or math.clamp((target - a.time) / (b.time - a.time), 0, 1)
+        for name, copy in pairs(clones) do
+            if a.pose[name] and b.pose[name] then
+                copy.CFrame = a.pose[name]:Lerp(b.pose[name], alpha)
+                copy.Color, copy.Transparency = palette.accent, 0.35
+            else copy.Transparency = 1 end
+        end
+        local position = a.root:Lerp(b.root, alpha).Position
+        viewCamera.CFrame = CFrame.lookAt(position + Vector3.new(6, 3.5, 8), position + Vector3.new(0, 1, 0))
+        local number = 0
+        for i = 1, #frames, math.max(1, math.floor(#frames / 16)) do
+            if frames[i].time <= target and target - frames[i].time < 3 then
+                number += 1
+                local trail = trails[number]
+                if not trail then trail = create("Part", world, { Anchored = true, CanCollide = false, CanTouch = false, CanQuery = false, Shape = Enum.PartType.Ball, Size = Vector3.new(0.1, 0.1, 0.1), Material = Enum.Material.Neon }); trails[number] = trail end
+                trail.CFrame, trail.Color, trail.Transparency = frames[i].root, palette.accent, 0.25
+            end
+        end
+        for i = number + 1, #trails do trails[i].Transparency = 1 end
+        caption.Text = string.format("%.1fs ago  •  %d frames  •  click to freeze", settings.echoDelay, #frames)
+        settings._echoStatus = { frames = #frames, parts = limit, delay = settings.echoDelay, frozen = settings.echoFreeze }
+    end }
+end
+chronoEcho = initializeChronoEcho()
+end
+
 local renderName = "Oktan_" .. HttpService:GenerateGUID(false)
 local unloaded = false
 local function unload()
@@ -3067,6 +3356,8 @@ RunService:BindToRenderStep(renderName, Enum.RenderPriority.Last.Value + 1, func
     updateHud(dt)
     updateWinter(dt)
     soulFx.step(dt)
+    visualStudio.step(dt)
+    chronoEcho.step(dt)
     updateLootESP(dt, camera)
 
     applyTheme()
@@ -3154,6 +3445,6 @@ RunService:BindToRenderStep(renderName, Enum.RenderPriority.Last.Value + 1, func
     if camera and inputReady and settings.aim and held("aim") then
         aimAt(camera, dt)
     else
-        lockedModel, aimRotation = nil, nil
+        aimContext.locked, aimContext.filter = nil, nil
     end
 end)
