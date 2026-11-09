@@ -23,6 +23,7 @@ end
 
 -- Every exposed setting has its own description, bounds and keyboard actions.
 local definitions = {
+    { "noRecoil", false, "No Recoil", "Снижает подтверждённый локальный множитель Recoil персонажа до нуля. Отдачу конкретного оружия ещё нужно проверить в игре.", "Наведение" },
     { "aimEase", 220, "Aim Ease", "Время плавного входа в наведение в миллисекундах. Меньше — быстрее захват.", "Наведение", 50, 500 },
     { "aimFilter", 14, "Target Filter", "Сглаживание дрожания точки цели. Меньше — мягче, больше — точнее следует движению.", "Наведение", 5, 30 },
     { "graphics", false, "Visual Studio", "Включает локальные цветовые сцены, небо и эффекты освещения.", "Мир" },
@@ -635,10 +636,10 @@ do
     actionsRow.Size = UDim2.new(1, 0, 0, 110)
     local export = button(actionsRow, "Weapon Debug", UDim2.fromOffset(12, 58), UDim2.fromOffset(180, 32))
     describe(export, "Возьми оружие и нажми: сохранит его доступные параметры и пути конфигураций в Oktan-weapon-debug.json.")
-    connect(export.Activated, function()
+    local function dumpWeapon()
         if type(writefile) ~= "function" then configStatus = "Запись файлов недоступна"; return end
         local ok, message = pcall(function()
-            local report = { version = 1, placeId = game.PlaceId, roots = {}, modules = {}, truncated = false }
+            local report = { version = 2, referencesFollowed = 0, placeId = game.PlaceId, roots = {}, modules = {}, truncated = false }
             local storage = game:GetService("ReplicatedStorage")
             local records = storage:FindFirstChild("Players")
             local record = records and records:FindFirstChild(player.Name)
@@ -662,12 +663,26 @@ do
             end
             local function scan(root)
                 if not root then return end
-                local rows, queue, cursor = {}, { { root, 0 } }, 1
-                while cursor <= #queue and #rows < 800 do
+                local rows, queue, cursor, visited = {}, { { root, 0 } }, 1, {}
+                while cursor <= #queue and #rows < 1200 do
                     local item = queue[cursor]; cursor += 1
-                    table.insert(rows, summary(item[1]))
-                    if item[2] < 8 then
-                        for _, child in ipairs(item[1]:GetChildren()) do table.insert(queue, { child, item[2] + 1 }) end
+                    local object, depth = item[1], item[2]
+                    if not visited[object] then
+                        visited[object] = true
+                        table.insert(rows, summary(object))
+                        if depth < 10 then
+                            for _, child in ipairs(object:GetChildren()) do table.insert(queue, { child, depth + 1 }) end
+                            if object:IsA("ObjectValue") and object.Value then
+                                local reference = object.Value
+                                local localItem = equipped and equipped.Value
+                                local shared = reference:IsDescendantOf(storage) and (not records or not reference:IsDescendantOf(records))
+                                local localReference = localItem and (reference == localItem or reference:IsDescendantOf(localItem))
+                                if shared or localReference then
+                                    report.referencesFollowed += 1
+                                    table.insert(queue, { reference, depth + 1 })
+                                end
+                            end
+                        end
                     end
                 end
                 if cursor <= #queue then report.truncated = true end
@@ -695,7 +710,35 @@ do
         end)
         configStatus = ok and "Сохранено: Oktan-weapon-debug.json" or "Ошибка Weapon Debug"
         if not ok then warn("[Oktan] Weapon Debug: " .. tostring(message)) end
-    end)
+        return ok
+    end
+    connect(export.Activated, dumpWeapon)
+    -- Upgrade the user's existing v1 diagnostic once after they run this update.
+    -- No automatic export is created on machines that have no old weapon report.
+    local needsUpgrade = false
+    if type(readfile) == "function" and type(writefile) == "function" then
+        local ok, old = pcall(function() return game:GetService("HttpService"):JSONDecode(readfile("Oktan-weapon-debug.json")) end)
+        needsUpgrade = ok and type(old) == "table" and old.version == 1
+    end
+    if needsUpgrade and RunService.Heartbeat then
+        local connection, elapsed, lifetime, attempts = nil, 0, 0, 0
+        connection = connect(RunService.Heartbeat, function(dt)
+            elapsed += dt; lifetime += dt
+            if lifetime >= 30 then connection:Disconnect(); return end
+            if elapsed < 0.5 then return end
+            elapsed = 0
+            local storage = game:GetService("ReplicatedStorage")
+            local records = storage:FindFirstChild("Players")
+            local record = records and records:FindFirstChild(player.Name)
+            local status = record and record:FindFirstChild("Status")
+            local variables = status and status:FindFirstChild("GameplayVariables")
+            local equipped = variables and variables:FindFirstChild("EquippedTool")
+            if equipped and equipped:IsA("ObjectValue") and equipped.Value then
+                attempts += 1
+                if dumpWeapon() or attempts >= 3 then connection:Disconnect() end
+            end
+        end)
+    end
 end
 
 local raidReport = button(actionsRow, "Export Debug", UDim2.fromOffset(516, 12), UDim2.fromOffset(184, 32))
@@ -721,6 +764,7 @@ connect(raidReport.Activated, function()
         end
         report.camera = { ads = settings._ads, nativeFov = settings._nativeFov, rawRmb = Input:IsMouseButtonPressed(Enum.UserInputType.MouseButton2), fov = workspace.CurrentCamera and workspace.CurrentCamera.FieldOfView, viewmodel = settings.viewmodel, viewmodelStatus = settings._viewmodelStatus }
         report.cameraTrace = settings._cameraTrace
+        report.weaponTuning = settings._weaponStatus
         report.visualStudio = settings._graphicsStatus
         report.chronoEcho = settings._echoStatus
         report.environment = settings._environmentStatus
@@ -1448,14 +1492,14 @@ create("UIPadding", search, { PaddingLeft = UDim.new(0, 12), PaddingRight = UDim
 describe(search, "Ищет по всем разделам, названиям и описаниям. Например: оружие, цвет, рамка, зум. Очистите строку для возврата к разделам.")
 
 local treeGroups = {
-    ["Наведение"] = { "Наведение", "Цели и проверки", "Область и плавность" },
+    ["Наведение"] = { "Наведение", "Цели и проверки", "Область и плавность", "Weapon Tuning" },
     ESP = { "Общее", "Подписи", "Геометрия", "Цвет и оформление", "Loot" },
     ["Мир"] = { "Освещение", "Vegetation", "Visual Studio" },
     ["Камера"] = { "Зум", "Прицел", "Vision", "Viewmodel" },
     ["Бинды"] = { "Инвентарь", "Dynamic Island", "Управление", "Назначения функций" },
     ["Настройки"] = { "Оформление", "Клиент" },
 }
-local settingGroup = { aimEase = "Область и плавность", aimFilter = "Область и плавность", graphics = "Visual Studio", gfxTier = "Visual Studio", gfxLook = "Visual Studio", echo = "Оформление", echoDelay = "Оформление", echoFreeze = "Оформление", motion = "Оформление", killFx = "Оформление", crossStyle = "Прицел", crossWidth = "Прицел", noLeaves = "Vegetation", noGrass = "Vegetation", corpseEsp = "Loot", itemEsp = "Loot", lootThrough = "Loot", lootRange = "Loot", lootTextSize = "Loot",
+local settingGroup = { noRecoil = "Weapon Tuning", aimEase = "Область и плавность", aimFilter = "Область и плавность", graphics = "Visual Studio", gfxTier = "Visual Studio", gfxLook = "Visual Studio", echo = "Оформление", echoDelay = "Оформление", echoFreeze = "Оформление", motion = "Оформление", killFx = "Оформление", crossStyle = "Прицел", crossWidth = "Прицел", noLeaves = "Vegetation", noGrass = "Vegetation", corpseEsp = "Loot", itemEsp = "Loot", lootThrough = "Loot", lootRange = "Loot", lootTextSize = "Loot",
     noVisor = "Vision", cameraFov = "Vision", cameraFovValue = "Vision",
     viewmodel = "Viewmodel", vmX = "Viewmodel", vmY = "Viewmodel", vmZ = "Viewmodel", sticky = "Наведение", noFog = "Освещение", bubbles = "Оформление", snow = "Оформление", snowDrifts = "Оформление", friendHats = "Оформление", espFps = "Цвет и оформление", adaptiveText = "Подписи",
     aim = "Наведение", aimPlayers = "Цели и проверки", aimDummies = "Цели и проверки",
@@ -3320,6 +3364,63 @@ end
 chronoEcho = initializeChronoEcho()
 end
 
+do
+local function initializeWeaponTuning()
+    local entry, elapsed
+    elapsed = 1
+    local function status(message)
+        settings._weaponStatus = { recoil = message, spread = "Waiting for weapon definition data" }
+    end
+    local function valid(value)
+        return type(value) == "number" and value == value and value >= 0 and value <= 100
+    end
+    local function restore()
+        local previous = entry
+        entry = nil
+        if not previous then return end
+        previous.connection:Disconnect()
+        if previous.root.Parent and previous.root:GetAttribute("Recoil") == 0 then
+            previous.root:SetAttribute("Recoil", previous.original)
+        end
+    end
+    table.insert(cleanups, restore)
+    return { step = function(dt)
+        elapsed += dt
+        if elapsed < 0.2 and settings.noRecoil and entry and player.Character == entry.character then return end
+        elapsed = 0
+        local character = player.Character
+        local root = character and character:FindFirstChild("HumanoidRootPart")
+        if entry and (not settings.noRecoil or root ~= entry.root) then restore() end
+        if not settings.noRecoil then status("Off"); return end
+        if not root or not valid(root:GetAttribute("Recoil")) then
+            restore()
+            status("No supported local Recoil multiplier")
+            return
+        end
+        if not entry then
+            local owned = { root = root, character = character, original = root:GetAttribute("Recoil"), writing = false }
+            entry = owned
+            owned.connection = root:GetAttributeChangedSignal("Recoil"):Connect(function()
+                if entry ~= owned or owned.writing then return end
+                local value = root:GetAttribute("Recoil")
+                if value == 0 then return end
+                if not valid(value) then restore(); status("Recoil multiplier removed or unsupported"); return end
+                owned.original, owned.writing = value, true
+                root:SetAttribute("Recoil", 0)
+                owned.writing = false
+            end)
+        end
+        if root:GetAttribute("Recoil") ~= 0 then
+            entry.original, entry.writing = root:GetAttribute("Recoil"), true
+            root:SetAttribute("Recoil", 0)
+            entry.writing = false
+        end
+        status("Local Recoil multiplier = 0; firing response unverified")
+    end }
+end
+aimContext.weaponTuning = initializeWeaponTuning()
+end
+
 local renderName = "Oktan_" .. HttpService:GenerateGUID(false)
 local unloaded = false
 local function unload()
@@ -3358,6 +3459,7 @@ RunService:BindToRenderStep(renderName, Enum.RenderPriority.Last.Value + 1, func
     soulFx.step(dt)
     visualStudio.step(dt)
     chronoEcho.step(dt)
+    aimContext.weaponTuning.step(dt)
     updateLootESP(dt, camera)
 
     applyTheme()
