@@ -243,6 +243,8 @@ if canSave then
         dirty, lastChange = true, os.clock()
     end
 end
+settings._subscription = ...
+if type(settings._subscription) ~= "table" then settings._subscription = nil end
 local changeSerial = 0
 local function changed()
     dirty, lastChange = true, os.clock()
@@ -640,8 +642,9 @@ local resetButton = button(actionsRow, "Reset", UDim2.fromOffset(180, 12), UDim2
 local unloadButton = button(actionsRow, "Unload", UDim2.fromOffset(348, 12), UDim2.fromOffset(155, 32))
 connect(saveButton.Activated, function() changed(); task.spawn(saveConfig) end)
 connect(resetButton.Activated, function()
-    local library = settings._musicLibrary
+    local library, session = settings._musicLibrary, settings._subscription
     settings = table.clone(defaults)
+    settings._subscription = session
     settings._musicLibrary = library or {}
     bindings = { menu = "Insert", aim = "MouseButton2", zoom = "LeftAlt", inspect = "F4" }
     capture = nil
@@ -959,6 +962,59 @@ end
 controlRows.music = initializeLocalMusic()
 end
 
+do
+local function initializeSubscriptionPanel()
+    local session = settings._subscription
+    local elapsed, warned = 1, false
+    local form = create("Frame", pages["Настройки"], { Name = "SubscriptionPanel", Size = UDim2.new(1, -20, 0, 270), BackgroundTransparency = 1, Visible = false })
+    text(form, "SUBSCRIPTION", { Position = UDim2.fromOffset(16, 12), Size = UDim2.fromOffset(600, 30), TextSize = 20, TextXAlignment = Enum.TextXAlignment.Left })
+    local state = text(form, "Проверка состояния...", { Position = UDim2.fromOffset(16, 58), Size = UDim2.new(1, -32, 0, 34), TextXAlignment = Enum.TextXAlignment.Left })
+    local remaining = text(form, "", { Position = UDim2.fromOffset(16, 96), Size = UDim2.new(1, -32, 0, 34), TextSize = 18, TextColor3 = palette.accent, TextXAlignment = Enum.TextXAlignment.Left })
+    local url = text(form, "https://funpay.com/users/15095530/", { Position = UDim2.fromOffset(16, 146), Size = UDim2.fromOffset(600, 32), TextEditable = false, ClearTextOnFocus = false }, "TextBox")
+    local renew = button(form, "Renew / Copy FunPay", UDim2.fromOffset(16, 198), UDim2.fromOffset(240, 40))
+    local result = text(form, "", { Position = UDim2.fromOffset(270, 198), Size = UDim2.new(1, -286, 0, 50), TextWrapped = true, TextColor3 = palette.muted })
+    local warning = text(gui, "", { Name = "OktanExpiryWarning", Position = UDim2.new(0.5, -230, 0, 124), Size = UDim2.fromOffset(460, 32), BackgroundColor3 = palette.background, BackgroundTransparency = 0.12, TextColor3 = Color3.fromRGB(255, 210, 140), Visible = false })
+    rounded(warning, 12)
+    local function renewNow()
+        if session and type(session.renew) == "function" then return session.renew() end
+        local link = "https://funpay.com/users/15095530/"
+        if type(openurl) == "function" then local ok, answer = pcall(openurl, link); if ok and answer ~= false then return "FunPay открыт" end end
+        if type(setclipboard) == "function" then local ok = pcall(setclipboard, link); if ok then return "Ссылка FunPay скопирована" end end
+        return "Скопируй ссылку из поля выше"
+    end
+    connect(renew.Activated, function() result.Text = renewNow() end)
+    if session then
+        session.unload = function() if unloadSignal.Parent then unloadSignal:Fire() end end
+        table.insert(cleanups, function() if type(session.cancel) == "function" then session.cancel() end end)
+    end
+    return { form = form, step = function(dt)
+        elapsed += dt
+        if elapsed < 0.25 then return end
+        elapsed = 0
+        local seconds
+        if session and type(session.remaining) == "function" then local ok, value = pcall(session.remaining); if ok and type(value) == "number" then seconds = math.max(0, math.floor(value)) end end
+        state.Text = not session and "Standalone • серверная сессия не подключена"
+            or session.status == "verification_unavailable" and "Сервер временно недоступен • повторная проверка"
+            or "Подписка: " .. tostring(session.status)
+        if seconds then
+            local days, hours, minutes = math.floor(seconds / 86400), math.floor(seconds / 3600) % 24, math.floor(seconds / 60) % 60
+            remaining.Text = string.format("Осталось: %dд %02d:%02d:%02d", days, hours, minutes, seconds % 60)
+            settings._subscriptionSummary = string.format("Subscription: %dд %02d:%02d:%02d", days, hours, minutes, seconds % 60)
+            if seconds <= 600 and not warned then warning.Visible = true; warned = true end
+            warning.Text = "Подписка заканчивается • продление в Settings → Client → Subscription"
+            if seconds > 600 then warning.Visible, warned = false, false end
+        else
+            remaining.Text = session and "Сервер пока не передаёт срок действия" or "Запускай клиент через загрузчик с ключом"
+            settings._subscriptionSummary = session and "Subscription: active • expiry unavailable" or nil
+            warning.Visible = false
+        end
+        remaining.TextColor3 = palette.accent
+        settings._subscriptionInfo = { status = session and session.status or "standalone", expiresAt = session and session.expiresAt, remaining = seconds, canOpenBrowser = session and session.canOpenBrowser or false }
+    end }
+end
+controlRows.subscription = initializeSubscriptionPanel()
+end
+
 local raidReport = button(actionsRow, "Export Debug", UDim2.fromOffset(516, 12), UDim2.fromOffset(184, 32))
 describe(raidReport, "Если Kills показывает прочерк, сохраните структуру рейдовых данных для подключения счётчика.")
 connect(raidReport.Activated, function()
@@ -982,6 +1038,7 @@ connect(raidReport.Activated, function()
         end
         report.camera = { ads = settings._ads, nativeFov = settings._nativeFov, rawRmb = Input:IsMouseButtonPressed(Enum.UserInputType.MouseButton2), fov = workspace.CurrentCamera and workspace.CurrentCamera.FieldOfView, viewmodel = settings.viewmodel, viewmodelStatus = settings._viewmodelStatus }
         report.cameraTrace = settings._cameraTrace
+        report.subscription = settings._subscriptionInfo
         report.music = settings._musicStatus
         report.weaponTuning = settings._weaponStatus
         report.visualStudio = settings._graphicsStatus
@@ -1674,6 +1731,7 @@ local function updateHud(dt)
     if hudElapsed >= 0.2 then
     hudElapsed = 0
     local sections = {}
+    if settings._subscriptionSummary then table.insert(sections, settings._subscriptionSummary) end
     if settings._musicStatus and settings._musicStatus.playing then table.insert(sections, "Music: " .. settings._musicStatus.title:sub(1, 42)) end
     if raid.kills ~= nil then table.insert(sections, (raid.session and "Session kills: " or "Raid kills: ") .. tostring(raid.kills)) end
     if raid.extracted ~= nil then
@@ -2168,12 +2226,16 @@ renderGraph = function()
         gconnect(control.MouseLeave, function() tooltip.Visible = false end)
     end
     if selectedCategory == "Настройки" and selectedGroup == "Клиент" then
+        node("Subscription", 588, 54 + #leaves * 40, 258, false, function()
+            openDetail("Subscription")
+            moveDetail(controlRows.subscription.form, 1)
+        end)
         node("Save / Reset / Unload", 588, 14 + #leaves * 40, 258, false, function()
             openDetail("Client")
             moveDetail(actionsRow, 1)
         end)
     end
-    graph.CanvasSize = UDim2.fromOffset(870, math.max(465, #leaves * 40 + 20))
+    graph.CanvasSize = UDim2.fromOffset(870, math.max(465, #leaves * 40 + 100))
 end
 connect(back.Activated, function()
     clearDetail()
@@ -3684,6 +3746,7 @@ RunService:BindToRenderStep(renderName, Enum.RenderPriority.Last.Value + 1, func
     chronoEcho.step(dt)
     aimContext.weaponTuning.step(dt)
     controlRows.music.step(dt)
+    controlRows.subscription.step(dt)
     updateLootESP(dt, camera)
 
     applyTheme()
