@@ -23,7 +23,7 @@ end
 
 -- Every exposed setting has its own description, bounds and keyboard actions.
 local definitions = {
-    { "mapPlayers", false, "Map Players", "Игроки на штатной большой карте Estonian Border. Открой карту на M. Позиции доступны только для переданных клиенту персонажей.", "ESP" },
+    { "mapPlayers", false, "Map Players", "Метки на карте Estonian Border после автопривязки: пройди 60–100 studs вперёд и вбок, открывая M в разных точках. Видны только переданные клиенту персонажи.", "ESP" },
     { "mapNames", true, "Map Names", "Показывать ники рядом с метками игроков на карте.", "ESP" },
     { "mapFriendsOnly", false, "Map Friends Only", "Показывать на карте только тиммейтов из списка Friends.", "ESP" },
     { "mapTextSize", 11, "Map Text Size", "Размер ников на карте. Тиммейты отмечены мятным цветом и ALLY.", "ESP", 8, 16 },
@@ -5113,9 +5113,73 @@ task.spawn(function()
 end)
 
 do
+local function initializeMapCalibration()
+    local api={samples={},state="Нужны точки привязки",bad=0}
+    api.reset=function(key)
+        api.key=key; api.matrix=nil; api.samples={}; api.bad=0; api.state="Нужны точки привязки"
+    end
+    api.predict=function(position)
+        local m=api.matrix
+        if not m then return nil end
+        return m.ux*position.X+m.uz*position.Z+m.u0,m.vx*position.X+m.vz*position.Z+m.v0
+    end
+    api.project=function(position,mine,anchor)
+        local m=api.matrix
+        if not m then return nil end
+        local x,z=position.X-mine.X,position.Z-mine.Z
+        return anchor.X+m.ux*x+m.uz*z,anchor.Y+m.vx*x+m.vz*z
+    end
+    api.observe=function(key,position,anchor,tolerance)
+        if key~=api.key then api.reset(key) end
+        if api.matrix then
+            local u,v=api.predict(position)
+            if math.sqrt((u-anchor.X)^2+(v-anchor.Y)^2)<=tolerance then api.bad=0; api.state="Привязка подтверждена"; return true end
+            api.bad+=1; api.state="Сверяем штатную стрелку…"
+            if api.bad>=5 then api.reset(key) end
+            return false
+        end
+        local last=api.samples[#api.samples]
+        if last and (position.X-last.x)^2+(position.Z-last.z)^2<30^2 then return false end
+        table.insert(api.samples,{x=position.X,z=position.Z,u=anchor.X,v=anchor.Y})
+        if #api.samples>16 then table.remove(api.samples,1) end
+        local n=#api.samples
+        if n<4 then api.state="Пройди вперёд, затем вбок"; return false end
+        local x,z,u,v=0,0,0,0
+        for _,sample in ipairs(api.samples) do x+=sample.x; z+=sample.z; u+=sample.u; v+=sample.v end
+        x/=n; z/=n; u/=n; v/=n
+        local xx,zz,xz,xu,zu,xv,zv=0,0,0,0,0,0,0
+        for _,sample in ipairs(api.samples) do
+            local dx,dz,du,dv=sample.x-x,sample.z-z,sample.u-u,sample.v-v
+            xx+=dx*dx; zz+=dz*dz; xz+=dx*dz; xu+=dx*du; zu+=dz*du; xv+=dx*dv; zv+=dz*dv
+        end
+        local det=xx*zz-xz*xz
+        if xx<400 or zz<400 or det<=0 or det/math.max(1,xx*zz)<.08 then api.state="Нужно пройти в другую сторону"; return false end
+        local m={ux=(xu*zz-zu*xz)/det,uz=(zu*xx-xu*xz)/det,vx=(xv*zz-zv*xz)/det,vz=(zv*xx-xv*xz)/det}
+        m.u0=u-m.ux*x-m.uz*z; m.v0=v-m.vx*x-m.vz*z
+        local scaleU,scaleV=math.sqrt(m.ux*m.ux+m.uz*m.uz),math.sqrt(m.vx*m.vx+m.vz*m.vz)
+        if scaleU<1/100000 or scaleU>1/100 or scaleV<1/100000 or scaleV>1/100
+            or math.abs(m.ux*m.vz-m.uz*m.vx)<1e-11 then api.state="Масштаб не подтверждён"; return false end
+        local worst,worstIndex=0,1
+        for index,sample in ipairs(api.samples) do
+            local error=math.sqrt((m.ux*sample.x+m.uz*sample.z+m.u0-sample.u)^2+(m.vx*sample.x+m.vz*sample.z+m.v0-sample.v)^2)
+            if error>worst then worst,worstIndex=error,index end
+        end
+        if worst>tolerance then
+            if n>=6 then table.remove(api.samples,worstIndex) end
+            api.state="Ожидаем стабильные точки"; return false
+        end
+        api.matrix=m; api.state="Привязка подтверждена"; return true
+    end
+    table.insert(cleanups,function() api.reset(nil) end)
+    return api
+end
+controlRows.mapCalibration=initializeMapCalibration()
+end
+
+do
 local function initializeMapOverlay()
     local api={elapsed=1,marks={},state="Off"}
-    local host,container,origin
+    local host,container,origin,notice
     local function clear()
         if host then host:Destroy() end
         if origin then origin.Visible=false end
@@ -5153,10 +5217,8 @@ local function initializeMapOverlay()
     api.anchor=function(marker,left,top,width,height)
         return Vector2.new((marker.AbsolutePosition.X+marker.AbsoluteSize.X*.5-left)/width,(marker.AbsolutePosition.Y+marker.AbsoluteSize.Y*.5-top)/height)
     end
-    api.project=function(position,mine,anchor,size)
-        -- Estonian Border: X on the map follows world Z, Y follows world X.
-        -- Anchor to the game's live self marker, not a guessed world origin.
-        return anchor.X+(position.Z-mine.Z)/size,anchor.Y+(position.X-mine.X)/size
+    api.project=function(position,mine,anchor)
+        return controlRows.mapCalibration.project(position,mine,anchor)
     end
     api.step=function(dt)
         api.elapsed+=dt
@@ -5191,6 +5253,8 @@ local function initializeMapOverlay()
             clear(); container=markers
             if not origin then origin=create("Frame",gui,{Name="OktanMapOrigin",Size=UDim2.fromScale(1,1),BackgroundTransparency=1,BorderSizePixel=0,Active=false,Selectable=false,ZIndex=14}) end
             host=create("Frame",origin,{Name="OktanMapPlayers",BackgroundTransparency=1,BorderSizePixel=0,ClipsDescendants=true,Active=false,Selectable=false,ZIndex=15})
+            notice=text(host,"",{Name="MapCalibration",Position=UDim2.fromOffset(12,12),Size=UDim2.fromOffset(390,48),TextSize=11,TextWrapped=true,BackgroundColor3=palette.background,BackgroundTransparency=.12,TextColor3=palette.text,Active=false,ZIndex=18})
+            rounded(notice,10)
         end
         host.Visible=true
         origin.Visible=true
@@ -5198,8 +5262,30 @@ local function initializeMapOverlay()
         -- No objects or input handlers are installed in the game's Markers tree.
         host.Position=UDim2.fromOffset(left-origin.AbsolutePosition.X,top-origin.AbsolutePosition.Y)
         host.Size=UDim2.fromOffset(width,height)
-        if api.elapsed<.1 then return end; api.elapsed=0
+        if api.elapsed<.1 then return end
+        local sampleDt=api.elapsed; api.elapsed=0
         local anchor=api.anchor(selfMarker,left,top,width,height)
+        local worldCoordinates=workspace:GetAttribute("Cordinates")
+        local mapCoordinates=current:GetAttribute("Cordinates")
+        local key=tostring(worldName).."/"..tostring(worldCoordinates).."/"..tostring(mapCoordinates).."/"..tostring(size)
+        local calibration=controlRows.mapCalibration
+        if calibration.key~=key then calibration.reset(key); api.stableAge=0; api.stablePosition=nil; api.stableAnchor=nil end
+        local stable=true
+        if not calibration.matrix then
+            if not api.stablePosition or (mine.Position-api.stablePosition).Magnitude>.4 or not api.stableAnchor or (anchor-api.stableAnchor).Magnitude>1/math.max(width,height) then api.stableAge=0 end
+            api.stablePosition,api.stableAnchor=mine.Position,anchor
+            api.stableAge=(api.stableAge or 0)+sampleDt
+            stable=api.stableAge>=.3
+            if not stable then calibration.state="Остановись на секунду для замера" end
+        end
+        local calibrated=stable and calibration.observe(key,mine.Position,anchor,math.max(.001,3/math.max(width,height))) or false
+        notice.Visible=not calibrated
+        if not calibrated then
+            notice.Text="Привязка карты · "..math.min(4,#controlRows.mapCalibration.samples).."/4\n"..controlRows.mapCalibration.state..". Можно закрывать карту между точками."
+            for _,mark in pairs(api.marks) do mark.dot.Visible=false end
+            api.state="Calibration: "..controlRows.mapCalibration.state
+            return
+        end
         local seen,count={},0
         for _,owner in ipairs(Players:GetPlayers()) do
             local character=owner.Character
@@ -5208,7 +5294,7 @@ local function initializeMapOverlay()
             if owner~=player and root and root:IsA("BasePart") and humanoid and humanoid.Health>0 and count<200 then
                 local friend=isFriend(owner)
                 if not settings.mapFriendsOnly or friend then
-                    local u,v=api.project(root.Position,mine.Position,anchor,size)
+                    local u,v=api.project(root.Position,mine.Position,anchor)
                     if u>=0 and u<=1 and v>=0 and v<=1 then
                         count+=1; seen[owner]=true
                         local mark=api.marks[owner]
@@ -5220,6 +5306,7 @@ local function initializeMapOverlay()
                         end
                         local color=friend and Color3.fromRGB(125,239,190) or Color3.fromHSV(settings.espHue/360,settings.espSaturation/100,settings.espValue/100)
                         mark.dot.Position=UDim2.fromScale(u,v)
+                        mark.dot.Visible=true
                         mark.dot.BackgroundColor3=color
                         mark.name.Text=owner.Name..(friend and " · ALLY" or "")
                         mark.name.TextColor3=color
