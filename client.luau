@@ -23,6 +23,9 @@ end
 
 -- Every exposed setting has its own description, bounds and keyboard actions.
 local definitions = {
+    { "containerReach", 250, "Container Reach", "Дальность Inspect для сундуков: 25–1500 studs. Наведи прицел на сундук; доступны только переданные клиенту предметы.", "Настройки", 25, 1500 },
+    { "containerEsp", false, "Containers", "Метки доступных сундуков в папках Containers/Chests. Дальность — Loot Distance.", "ESP" },
+    { "auroraEsp", false, "Aurora", "Отдельные метки сундуков с Aurora/Аврора в имени или DisplayName. Если имя модели другое, включи Containers.", "ESP" },
     { "espStyle", 2, "ESP Style", "Classic — прежние подписи; Glass — компактные карточки, здоровье и оружие под ногами; Minimal — без подложек. Chams и линии мягче в Glass/Minimal.", "ESP", 1, 3 },
     { "skinTextures", true, "Glass Textures", "Объёмное стекло с мягкими бликами и инеем. Отключи для более простого фона; Light Menu также скрывает декор.", "Настройки" },
     { "islandMusic", true, "Music Island", "Музыка в Dynamic Island: плавная смена трека, Pause/Stop и локальные строки LRC. В развёрнутом виде время, киллы и бинды сохраняются.", "Бинды" },
@@ -507,6 +510,7 @@ local function beginBind(action)
     bindCaption.Text = (schema[action] and schema[action][3] or action) .. " · Bind"
     bindHint.Text = pendingNumeric and "Выберите действие: уменьшить или увеличить.\nEsc — отмена" or "Нажмите клавишу • Esc — отмена\nBackspace — удалить назначение"
     bindDialog.Visible = true
+    controlRows.bindShield.Visible=true
     bindDown.Visible, bindUp.Visible = pendingNumeric ~= nil, pendingNumeric ~= nil
     tooltip.Visible = false
     refreshAll()
@@ -525,14 +529,26 @@ connect(bindUp.Activated, function()
 end)
 table.insert(refreshers, function()
     if not capture and not pendingNumeric then bindDialog.Visible = false end
+    if controlRows.bindShield then controlRows.bindShield.Visible=bindDialog.Visible end
 end)
+controlRows.bindShield=create("TextButton",gui,{Name="BindModalShield",Text="",Size=UDim2.fromScale(1,1),BackgroundColor3=Color3.fromRGB(0,0,0),BackgroundTransparency=.7,AutoButtonColor=false,Visible=false,Active=true,Modal=true,ZIndex=49})
+connect(bindDialog:GetPropertyChangedSignal("Visible"),function() controlRows.bindShield.Visible=bindDialog.Visible end)
+controlRows.bindGesture={}
 local function middleBind(object, action, transientConnect)
-    (transientConnect or connect)(object.InputBegan, function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton3 then
-            task.defer(function() if menu.Visible then beginBind(action) end end)
+    (transientConnect or connect)(object.InputBegan,function(input)
+        if input.UserInputType==Enum.UserInputType.MouseButton3 and menu.Visible and not bindDialog.Visible then
+            controlRows.bindGesture.action=action
         end
     end)
 end
+connect(Input.InputEnded,function(input)
+    if input.UserInputType==Enum.UserInputType.MouseButton3 then
+        local action=controlRows.bindGesture.action
+        controlRows.bindGesture.action=nil
+        if action and menu.Visible and focused and not bindDialog.Visible then beginBind(action) end
+    end
+end)
+connect(Input.WindowFocusReleased,function() controlRows.bindGesture.action=nil end)
 
 local function bindButton(parent, action, position, size, prefix)
     local bind = button(parent, "", position, size)
@@ -666,6 +682,7 @@ describe(unloadButton, "Сохраняет конфиг, удаляет инте
 do
     actionsRow.Size = UDim2.new(1, 0, 0, 110)
     local export = button(actionsRow, "Weapon Debug", UDim2.fromOffset(12, 58), UDim2.fromOffset(180, 32))
+    export.Visible=false
     describe(export, "Возьми оружие и нажми: сохранит его доступные параметры и пути конфигураций в Oktan-weapon-debug.json.")
     local function dumpWeapon()
         if type(writefile) ~= "function" then configStatus = "Запись файлов недоступна"; return end
@@ -1484,6 +1501,12 @@ controlRows.friends=initializeFriends()
 end
 
 local raidReport = button(actionsRow, "Export Debug", UDim2.fromOffset(516, 12), UDim2.fromOffset(184, 32))
+raidReport.Visible=false
+actionsRow.Size=UDim2.new(1,0,0,56)
+for index,control in ipairs({saveButton,resetButton,unloadButton}) do
+    control.Position=UDim2.new((index-1)/3,12-(index-1)*4,0,12)
+    control.Size=UDim2.new(1/3,-16,0,32)
+end
 describe(raidReport, "Если Kills показывает прочерк, сохраните структуру рейдовых данных для подключения счётчика.")
 connect(raidReport.Activated, function()
     if type(writefile) ~= "function" then configStatus = "Запись файлов недоступна"; return end
@@ -1614,7 +1637,7 @@ connect(Input.InputBegan, function(input, processed)
     if Input:GetFocusedTextBox() then return end
     local name = inputName(input)
     if pendingNumeric and name == "Escape" then
-        pendingNumeric = nil; bindDialog.Visible = false; return
+        pendingNumeric = nil; bindDialog.Visible = false; controlRows.bindShield.Visible=false; return
     end
     if capture then
         if name == "Escape" then capture = nil; refreshAll(); return end
@@ -1688,6 +1711,7 @@ connect(Input.InputEnded, function(input)
 end)
 connect(Input.WindowFocusReleased, function()
     focused = false
+    pendingNumeric=nil; bindDialog.Visible=false; controlRows.bindShield.Visible=false
     activeSlider, controlRows.drag.start, capture = nil, nil, nil
     tooltip.Visible = false
     refreshAll()
@@ -2231,7 +2255,7 @@ local function initializeInventoryArt()
         local ray=camera:ViewportPointToRay(camera.ViewportSize.X*.5,camera.ViewportSize.Y*.5)
         local params=RaycastParams.new(); params.FilterType=Enum.RaycastFilterType.Exclude
         params.FilterDescendantsInstances=player.Character and {player.Character,camera} or {camera}
-        local hit=workspace:Raycast(ray.Origin,ray.Direction*40,params)
+        local hit=workspace:Raycast(ray.Origin,ray.Direction*settings.containerReach,params)
         local current=hit and hit.Instance
         for _=1,12 do
             if not current or current==workspace then break end
@@ -2615,7 +2639,7 @@ local treeGroups = {
     ["Бинды"] = { "Инвентарь", "Dynamic Island", "Управление", "Назначения функций" },
     ["Настройки"] = { "Оформление", "Клиент", "Music", "Performance" },
 }
-local settingGroup = { espStyle = "Цвет и оформление", skinTextures = "Оформление", islandMusic = "Dynamic Island", adaptiveEsp = "Performance", lowFx = "Performance", perfDebug = "Performance", yandexPlay = "Music", spotifyPlay = "Music", musicPlay = "Music", musicVolume = "Music", musicRepeat = "Music", musicIndex = "Music", noRecoil = "Weapon Tuning", aimEase = "Область и плавность", aimFilter = "Область и плавность", graphics = "Visual Studio", gfxTier = "Visual Studio", gfxLook = "Visual Studio", echo = "Оформление", echoDelay = "Оформление", echoFreeze = "Оформление", motion = "Оформление", killFx = "Оформление", crossStyle = "Прицел", crossWidth = "Прицел", noLeaves = "Vegetation", noGrass = "Vegetation", corpseEsp = "Loot", itemEsp = "Loot", lootThrough = "Loot", lootRange = "Loot", lootTextSize = "Loot",
+local settingGroup = { containerReach="Инвентарь", containerEsp="Loot", auroraEsp="Loot", espStyle = "Цвет и оформление", skinTextures = "Оформление", islandMusic = "Dynamic Island", adaptiveEsp = "Performance", lowFx = "Performance", perfDebug = "Performance", yandexPlay = "Music", spotifyPlay = "Music", musicPlay = "Music", musicVolume = "Music", musicRepeat = "Music", musicIndex = "Music", noRecoil = "Weapon Tuning", aimEase = "Область и плавность", aimFilter = "Область и плавность", graphics = "Visual Studio", gfxTier = "Visual Studio", gfxLook = "Visual Studio", echo = "Оформление", echoDelay = "Оформление", echoFreeze = "Оформление", motion = "Оформление", killFx = "Оформление", crossStyle = "Прицел", crossWidth = "Прицел", noLeaves = "Vegetation", noGrass = "Vegetation", corpseEsp = "Loot", itemEsp = "Loot", lootThrough = "Loot", lootRange = "Loot", lootTextSize = "Loot",
     noVisor = "Vision", cameraFov = "Vision", cameraFovValue = "Vision",
     viewmodel = "Viewmodel", vmX = "Viewmodel", vmY = "Viewmodel", vmZ = "Viewmodel", sticky = "Наведение", noFog = "Освещение", bubbles = "Оформление", snow = "Оформление", snowDrifts = "Оформление", friendHats = "Оформление", espFps = "Цвет и оформление", adaptiveText = "Подписи",
     aim = "Наведение", aimPlayers = "Цели и проверки", aimDummies = "Цели и проверки",
@@ -2902,7 +2926,7 @@ local function gconnect(event, callback)
 end
 local function wire(a, b)
     local reach = (b.X - a.X) * 0.5
-    local path = create("Path2D", graph, {
+    local path = create("Path2D", controlRows.graphCanvas, {
         Name = "BranchCurve", Color3 = Color3.fromRGB(104, 116, 136),
         Thickness = 1.5, ZIndex = 1, Visible = true,
     })
@@ -2912,7 +2936,7 @@ local function wire(a, b)
     })
 end
 local function node(label, x, y, width, selected, callback)
-    local object = button(graph, label, UDim2.fromOffset(x, y), UDim2.fromOffset(width, 34))
+    local object = button(controlRows.graphCanvas, label, UDim2.fromOffset(x, y), UDim2.fromOffset(width, 34))
     object.BackgroundTransparency = selected and 0.08 or 0.18
     object.TextColor3 = selected and palette.accent or palette.text
     object.TextSize = 13
@@ -2975,6 +2999,8 @@ renderGraph = function()
     table.clear(graphBindingLabels)
     controlRows.studio.clearNodes()
     graph:ClearAllChildren()
+    tooltip.Visible=false; hovered=nil
+    controlRows.graphCanvas=create("Frame",graph,{Name="TreeCanvas",BackgroundTransparency=1,Size=UDim2.fromOffset(870,470),BorderSizePixel=0})
     for _, page in pairs(pages) do page.Visible = false end
     searchResults.Visible = false
     for _, tabButton in pairs(tabButtons) do tabButton.Visible = false end
@@ -3042,7 +3068,7 @@ renderGraph = function()
         end
     end
     if query ~= "" and #leaves == 0 then
-        text(graph, "Ничего не найдено", { Position = UDim2.fromOffset(588, 24), Size = UDim2.fromOffset(258, 40), TextColor3 = palette.muted })
+        text(controlRows.graphCanvas, "Ничего не найдено", { Position = UDim2.fromOffset(588, 24), Size = UDim2.fromOffset(258, 40), TextColor3 = palette.muted })
     end
     for index, entry in ipairs(leaves) do
         local definition = schema[entry.key]
@@ -3141,6 +3167,7 @@ renderGraph = function()
         end)
     end
     graph.CanvasSize = UDim2.fromOffset(870, math.max(465, #leaves * 40 + 100, #groups * 88 + 40))
+    controlRows.graphCanvas.Size=graph.CanvasSize
 end
 connect(back.Activated, function()
     clearDetail()
@@ -4400,7 +4427,7 @@ local updateLootESP
 do
 local function initializeLootESP()
     local marks, elapsed, scanElapsed = {}, 0, 2
-    local roots = { corpses = "corpse", bodies = "corpse", deadbodies = "corpse",
+    local roots = { containers="container", chests="container", lootcontainers="container", corpses = "corpse", bodies = "corpse", deadbodies = "corpse",
         droppeditems = "item", grounditems = "item", loot = "item", items = "item" }
     local function normalize(value) return value:lower():gsub("[%s_%-]", "") end
     local function clear(object)
@@ -4427,6 +4454,10 @@ local function initializeLootESP()
                 if humanoid and humanoid.Health > 0 then return end
                 if humanoid then kind = "corpse" end
                 if kind == "item" and not settings.itemEsp then return end
+                local display=object:GetAttribute("DisplayName")
+                local name=string.lower(object.Name.." "..(type(display)=="string" and display or ""))
+                local aurora=name:find("aurora",1,true)~=nil or name:find("аврора",1,true)~=nil or name:find("Аврора",1,true)~=nil
+                if kind=="container" and not (settings.containerEsp or settings.auroraEsp and aurora) then return end
                 local part = object:IsA("BasePart") and object or object.PrimaryPart or object:FindFirstChildWhichIsA("BasePart", true)
                 if not part then return end
                 seen[object], count = true, count + 1
@@ -4442,6 +4473,7 @@ local function initializeLootESP()
                     })
                     marks[object] = { gui = billboard, label = label, kind = kind, part = part }
                 end
+                marks[object].aurora=aurora
                 marks[object].kind, marks[object].part = kind, part
                 marks[object].gui.Adornee = part
             end
@@ -4470,13 +4502,13 @@ local function initializeLootESP()
             else
                 local distance = camera and (mark.part.Position - camera.CFrame.Position).Magnitude or math.huge
                 mark.gui.Enabled = not menu.Visible and distance <= settings.lootRange
-                    and (mark.kind == "corpse" and settings.corpseEsp or mark.kind == "item" and settings.itemEsp)
+                    and (mark.kind == "corpse" and settings.corpseEsp or mark.kind == "item" and settings.itemEsp or mark.kind=="container" and (settings.containerEsp or settings.auroraEsp and mark.aurora))
                 mark.gui.AlwaysOnTop = settings.lootThrough
                 mark.label.TextSize = settings.lootTextSize
-                mark.label.TextColor3 = mark.kind == "corpse" and Color3.fromRGB(255, 156, 125) or Color3.fromRGB(115, 229, 185)
+                mark.label.TextColor3 = mark.kind=="container" and (mark.aurora and Color3.fromRGB(190,163,255) or palette.accent) or mark.kind == "corpse" and Color3.fromRGB(255, 156, 125) or Color3.fromRGB(115, 229, 185)
                 local name = object:GetAttribute("DisplayName")
                 name = type(name) == "string" and name or object.Name
-                mark.label.Text = (mark.kind == "corpse" and "CORPSE · " or "") .. name .. "\n" .. math.round(distance) .. " st"
+                mark.label.Text = (mark.kind == "corpse" and "CORPSE · " or mark.kind=="container" and "CONTAINER · " or "") .. name .. "\n" .. math.round(distance) .. " st"
             end
         end
     end
@@ -4903,6 +4935,7 @@ RunService:BindToRenderStep(renderName, Enum.RenderPriority.Last.Value + 1, func
     menu.BackgroundTransparency = math.min(settings.glass, 12) / 100
     if not menu.Visible then
         bindDialog.Visible = false
+        controlRows.bindShield.Visible=false; controlRows.bindGesture.action=nil
         pendingNumeric = nil
     end
     blurEffect.Size = menu.Visible and not settings.lowFx and settings.blur or 0
