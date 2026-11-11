@@ -4,7 +4,7 @@ local player=players.LocalPlayer
 local gui=player:WaitForChild("PlayerGui")
 local http=game:GetService("HttpService")
 assert(type(writefile)=="function","Oktan: writefile недоступен")
-local report={version=1,placeId=game.PlaceId,mapName=workspace:GetAttribute("MapName"),gui={},world={},truncated=false}
+local report={version=2,placeId=game.PlaceId,mapName=workspace:GetAttribute("MapName"),gui={},world={},truncated=false}
 local function serial(value)
     local kind=typeof(value)
     if kind=="number" or kind=="boolean" then return value end
@@ -28,11 +28,7 @@ local function visible(object)
 end
 local roots={}
 for _,object in ipairs(gui:GetDescendants()) do
-    if object:IsA("GuiObject") and object.Name:lower():find("map",1,true) then
-        local ancestor=object; local depth=0
-        while ancestor.Parent and ancestor.Parent~=gui and not ancestor.Parent:IsA("ScreenGui") and depth<2 do ancestor=ancestor.Parent; depth+=1 end
-        roots[ancestor]=true
-    end
+    if object:IsA("GuiObject") and object.Name=="MapFrame" then roots[object]=true end
 end
 local seen={}
 local function addGui(object)
@@ -47,10 +43,16 @@ local function addGui(object)
         entry.image=object.Image; entry.rectOffset=serial(object.ImageRectOffset); entry.rectSize=serial(object.ImageRectSize); entry.scaleType=object.ScaleType.Name
     end
     if object:IsA("ScrollingFrame") then entry.canvasPosition=serial(object.CanvasPosition); entry.canvasSize=serial(object.CanvasSize) end
-    -- No text/chat contents or key values are collected.
+    if object.Name=="Location" and object:IsA("TextLabel") then entry.locationText=object.Text:sub(1,200) end
+    if object:IsA("Vector3Value") or object:IsA("Vector2Value") or object:IsA("CFrameValue") or object:IsA("NumberValue") then entry.value=serial(object.Value) end
+    -- Only the map subtree and GPS label; no chat/input/key text is collected.
     table.insert(report.gui,entry)
 end
 for root in pairs(roots) do addGui(root); for _,object in ipairs(root:GetDescendants()) do addGui(object) end end
+report.mapFound=next(roots)~=nil
+report.mapOpen=false
+for root in pairs(roots) do if visible(root) then report.mapOpen=true end end
+report.workspaceAttributes=attributes(workspace)
 for _,parent in ipairs({workspace,game:GetService("ReplicatedStorage")}) do
     for _,object in ipairs(parent:GetChildren()) do
         local name=object.Name:lower()
@@ -69,3 +71,4 @@ local root=player.Character and player.Character:FindFirstChild("HumanoidRootPar
 report.localPosition=root and serial(root.Position)
 writefile("Oktan-map-layout.json",http:JSONEncode(report))
 warn("Oktan: карта сохранена в Oktan-map-layout.json; найдено UI-объектов: "..#report.gui)
+if not report.mapOpen then warn("Oktan: карта закрыта. Открой карту в рейде и повтори экспорт.") end
