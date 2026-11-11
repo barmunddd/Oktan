@@ -23,6 +23,7 @@ end
 
 -- Every exposed setting has its own description, bounds and keyboard actions.
 local definitions = {
+    { "islandMusic", true, "Music Island", "Музыка в Dynamic Island: плавная смена трека, Pause/Stop и локальные строки LRC. В развёрнутом виде время, киллы и бинды сохраняются.", "Бинды" },
     { "adaptiveEsp", true, "Adaptive ESP", "При большом числе целей снижает частоту только ESP: до 30 обновлений/с после 16 целей и до 20 после 32. Игровой FPS не ограничивает; все цели остаются видимыми.", "Настройки" },
     { "lowFx", false, "Light Menu", "Отключает размытие и фоновые зимние анимации меню. Игровые функции и выбранные цвета не меняет.", "Настройки" },
     { "perfDebug", false, "Frame Stats", "Измеряет время основного обработчика клиента, ESP и камеры в миллисекундах CPU. Видно внизу меню и в Export Debug; это не замер нагрузки всей игры или GPU.", "Настройки" },
@@ -1224,7 +1225,11 @@ local function initializeYandexMusic()
         now.Text, artist.Text = tostring(data.title or "Яндекс Музыка"), tostring(data.artist or "")
         buttons.play.TextColor3 = lastFlag and palette.accent or palette.text
         info.Text = lastFlag and "Играет в приложении на твоём ПК" or "Пауза • управление только Яндекс Музыкой"
-        settings._yandexStatus = { title = data.title, artist = data.artist, playing = lastFlag, localOnly = true }
+        local old = settings._yandexStatus
+        settings._yandexStatus = { title = data.title, artist = data.artist, playing = lastFlag, localOnly = true,
+            stopped = old and old.title == data.title and not lastFlag and old.stopped or false,
+            positionMs = tonumber(data.position_ms) or 0, positionAvailable = data.position_available == true,
+            updatedAt = os.clock() }
     end
     api.control = function(action)
         if not connected or not source then info.Text = "Нажми Connect после запуска музыки в приложении"; return false end
@@ -1232,7 +1237,15 @@ local function initializeYandexMusic()
             info.Text = tostring(data.message or "Команда выполнена")
             if action == "play" then lastFlag = true elseif action == "pause" or action == "stop" then lastFlag = false end
             settings.yandexPlay = lastFlag
-            elapsed = 0 -- Keep the command result visible until the next status update.
+            if settings._yandexStatus then
+                local prior = settings._yandexStatus
+                if prior.playing and prior.positionAvailable and prior.updatedAt then prior.positionMs += math.max(0,os.clock()-prior.updatedAt)*1000 end
+                prior.updatedAt = os.clock()
+                settings._yandexStatus.playing = lastFlag
+                settings._yandexStatus.stopped = action == "stop"
+                if action == "play" or action == "pause" or action == "stop" then settings._yandexStatus.controlAt = os.clock() end
+            end
+            elapsed = (action == "next" or action == "previous") and 3 or 0
         end)
     end
     connect(connectButton.Activated, function() pairing = nil; send("/connect", {}, status) end)
@@ -1255,7 +1268,7 @@ local function initializeYandexMusic()
             api.control(desired and "play" or "pause")
         end
         elapsed += dt
-        if connected and menu.Visible and form.Visible and elapsed >= 3 and not busy then
+        if connected and ((menu.Visible and form.Visible) or (settings.island and settings.islandMusic)) and elapsed >= 3 and not busy then
             elapsed = 0; send("/status", {}, status)
         end
     end
@@ -1544,6 +1557,167 @@ local islandBrand = text(islandHeader, "OKTAN", {
 local islandClock = text(islandHeader, "", { Position = UDim2.fromOffset(110, 0), Size = UDim2.fromOffset(112, 44), TextSize = 13 })
 local islandKills = text(islandHeader, "", { Position = UDim2.fromOffset(228, 0), Size = UDim2.fromOffset(142, 44), TextSize = 12 })
 local islandChevron = text(islandHeader, "+", { Position = UDim2.fromOffset(378, 0), Size = UDim2.fromOffset(24, 44), TextSize = 17 })
+do
+local function initializeMusicIsland()
+    local root = create("Frame", islandHeader, {Name="MusicCapsule", Size=UDim2.new(1,0,0,48), BackgroundTransparency=1, Visible=false})
+    local expanded = create("Frame", islandList, {Name="MusicRow", Size=UDim2.new(1,0,0,52), BackgroundTransparency=1, LayoutOrder=-10, Visible=false})
+    local emblem = button(root,"O",UDim2.fromOffset(10,9),UDim2.fromOffset(30,30))
+    emblem.TextSize=16; emblem.TextColor3=palette.accent
+    describe(emblem,"Открыть и свернуть Dynamic Island. Музыка управляется кнопками справа.")
+    connect(emblem.Activated,function() islandExpanded=not islandExpanded end)
+    local clip = create("Frame",root,{Position=UDim2.fromOffset(50,5),Size=UDim2.new(1,-188,0,39),BackgroundTransparency=1,ClipsDescendants=true})
+    local first = text(clip,"",{Name="MusicLine",Position=UDim2.fromOffset(0,0),Size=UDim2.new(1,0,0,21),TextSize=14,Font=Enum.Font.GothamBold,TextXAlignment=Enum.TextXAlignment.Left,TextTruncate=Enum.TextTruncate.None})
+    local second = text(clip,"",{Name="MusicLineTransition",Position=UDim2.fromOffset(0,10),Size=UDim2.new(1,0,0,21),TextSize=14,Font=Enum.Font.GothamBold,TextXAlignment=Enum.TextXAlignment.Left,TextTruncate=Enum.TextTruncate.None,TextTransparency=1})
+    local subtitle=text(clip,"",{Position=UDim2.fromOffset(0,22),Size=UDim2.new(1,0,0,16),TextSize=10,TextColor3=palette.muted,TextXAlignment=Enum.TextXAlignment.Left,TextTruncate=Enum.TextTruncate.AtEnd})
+    local bar=create("Frame",root,{Position=UDim2.fromOffset(50,45),Size=UDim2.new(1,-188,0,1),BackgroundColor3=palette.control,BackgroundTransparency=0.45,BorderSizePixel=0})
+    local fill=create("Frame",bar,{Size=UDim2.fromScale(0,1),BackgroundColor3=palette.accent,BorderSizePixel=0})
+    local controls={}
+    for i,entry in ipairs({{"previous","<<"},{"play",">"},{"next",">>"},{"stop",""}}) do
+        local item=button(root,entry[2],UDim2.new(1,-132+(i-1)*30,0,10),UDim2.fromOffset(26,28))
+        item.TextSize=12; item.BackgroundTransparency=0.8
+        if entry[1]=="stop" then
+            local square=create("Frame",item,{AnchorPoint=Vector2.new(.5,.5),Position=UDim2.fromScale(.5,.5),Size=UDim2.fromOffset(7,7),BackgroundColor3=palette.muted,BorderSizePixel=0}); rounded(square,2)
+        end
+        controls[entry[1]]=item
+        connect(item.Activated,function()
+            local state=settings._yandexStatus
+            local action=entry[1]
+            if action=="play" and state and state.playing then action="pause" end
+            controlRows.yandex.control(action)
+        end)
+    end
+    describe(controls.play,"Продолжить или приостановить музыку в приложении Яндекса.")
+    describe(controls.stop,"Stop. Если приложение не поддерживает остановку — пауза; позиция сбрасывается только при поддержке приложения.")
+    local tweens, elapsed, clock, signature, trackKey = {},1,0,nil,nil
+    local incoming, outgoing=first,second
+    local lineWidth, transitionUntil = 0,0
+    local cues, lrcMessage, manual, manualPosition = {},"Без LRC — название и исполнитель",false,0
+    local api={root=root,expanded=expanded,controls=controls}
+    local function cancel()
+        for _,tween in ipairs(tweens) do tween:Cancel() end; table.clear(tweens)
+    end
+    local function trim(value) return value:match("^%s*(.-)%s*$") end
+    local function normalized(value) return string.lower(trim(value)):gsub("%s+"," ") end
+    api.parse=function(raw,titleText)
+        if type(raw)~="string" or #raw>131072 then return {},"LRC слишком большой" end
+        raw=raw:gsub("^\239\187\191","")
+        local tagged=raw:match("%[ti:(.-)%]")
+        if not tagged or normalized(tagged)~=normalized(titleText or "") then return {},"В LRC нужен [ti:точное название текущего трека]" end
+        local result,offset={},tonumber(raw:match("%[offset:([%+%-]?%d+)%]")) or 0
+        for line in raw:gmatch("[^\r\n]+") do
+            local textValue=line:gsub("%[%d+:%d+%.?%d*%]","")
+            if textValue~=line then
+                textValue=trim(textValue)
+                local cut=utf8.offset(textValue,181); if cut then textValue=textValue:sub(1,cut-1) end
+                for minutes,seconds in line:gmatch("%[(%d+):(%d+%.?%d*)%]") do
+                    local sec=tonumber(seconds)
+                    if sec and sec<60 and #result<1200 then table.insert(result,{time=math.max(0,tonumber(minutes)*60+sec+offset/1000),text=textValue}) end
+                end
+            end
+        end
+        table.sort(result,function(a,b) return a.time<b.time end)
+        return result,#result>0 and (tostring(#result).." строк LRC") or "В файле нет временных меток"
+    end
+    api.reload=function()
+        local state=settings._yandexStatus
+        local ok,raw=pcall(function() return readfile("Oktan-lyrics.lrc") end)
+        cues={}
+        if ok and state then
+            local parsed,values,message=pcall(api.parse,raw,state.title)
+            if parsed then cues,lrcMessage=values,message else lrcMessage="Не удалось прочитать UTF-8 LRC" end
+        else lrcMessage="Нет Oktan-lyrics.lrc • показываем название трека" end
+        return lrcMessage
+    end
+    local form=controlRows.yandex.form
+    form.Size=UDim2.new(1,-20,0,410)
+    local reload=button(form,"Reload LRC",UDim2.fromOffset(16,326),UDim2.fromOffset(150,34))
+    local sync=button(form,"Sync 0:00",UDim2.fromOffset(178,326),UDim2.fromOffset(150,34))
+    local hint=text(form,"LRC: локальный файл с таймкодами; без него — название трека",{Position=UDim2.fromOffset(16,368),Size=UDim2.new(1,-32,0,34),TextColor3=palette.muted,TextSize=11,TextWrapped=true,TextXAlignment=Enum.TextXAlignment.Left})
+    connect(reload.Activated,function() hint.Text=api.reload(); signature=nil end)
+    connect(sync.Activated,function()
+        if #cues==0 then hint.Text="Сначала загрузи LRC текущего трека"; return end
+        manual,manualPosition=true,0
+        hint.Text="Ручная синхронизация от 0:00 • нажимай одновременно с началом трека"
+        signature=nil
+    end)
+    describe(sync,"Когда Windows не передаёт позицию: запусти трек с начала и одновременно нажми Sync 0:00. Это ручная синхронизация, не распознавание песни.")
+    local function transition(value,caption,state)
+        cancel()
+        outgoing,incoming=incoming,outgoing
+        incoming.Text=value
+        incoming.Position=UDim2.fromOffset(0,settings.motion and not settings.lowFx and 9 or 0)
+        incoming.TextTransparency=settings.motion and not settings.lowFx and 1 or 0
+        subtitle.Text=caption
+        local measured=game:GetService("TextService"):GetTextSize(value,14,Enum.Font.GothamBold,Vector2.new(4096,30))
+        lineWidth=measured.X
+        incoming.Size=UDim2.fromOffset(math.max(280,lineWidth+8),21)
+        transitionUntil=clock+0.3
+        if settings.motion and not settings.lowFx then
+            for object,goal in pairs({[outgoing]={Position=UDim2.fromOffset(0,-9),TextTransparency=1},[incoming]={Position=UDim2.fromOffset(0,0),TextTransparency=state=="stopped" and .4 or 0}}) do
+                local tween=TweenService:Create(object,TweenInfo.new(.24,Enum.EasingStyle.Quart,Enum.EasingDirection.Out),goal)
+                table.insert(tweens,tween); tween:Play()
+            end
+        else outgoing.TextTransparency=1 end
+    end
+    api.current=function() return incoming.Text end
+    api.step=function(dt)
+        local data=settings._yandexStatus
+        if manual and data and data.playing then manualPosition+=dt end
+        elapsed+=dt; clock+=dt
+        if elapsed<1/30 then return end
+        elapsed=0
+        local active=settings.island and settings.islandMusic and data and type(data.title)=="string" and data.title~=""
+            and (not data.updatedAt or os.clock()-data.updatedAt<12)
+        root.Visible=active==true
+        expanded.Visible=active==true and islandExpanded
+        islandBrand.Visible,islandClock.Visible,islandKills.Visible,islandChevron.Visible=not active or islandExpanded,not active or islandExpanded,not active or islandExpanded,not active or islandExpanded
+        settings._musicIslandWidth=active and not islandExpanded and (data.stopped and 440 or 500) or 420
+        if not active then return end
+        local parent=islandExpanded and expanded or islandHeader
+        if root.Parent~=parent then root.Parent=parent end
+        local key=data.title.."\0"..tostring(data.artist)
+        if key~=trackKey then trackKey=key; manual,manualPosition=false,0; api.reload(); signature=nil end
+        local position
+        if manual then position=manualPosition
+        elseif data.positionAvailable then position=math.max(0,(data.positionMs or 0)/1000)+(data.playing and math.max(0,os.clock()-(data.updatedAt or os.clock())) or 0) end
+        local value,caption=data.title,tostring(data.artist or "Яндекс Музыка")
+        local progress=0
+        if #cues>0 and position and not data.stopped then
+            local index
+            local left,right=1,#cues
+            while left<=right do
+                local middle=math.floor((left+right)/2)
+                if cues[middle].time<=position then index=middle; left=middle+1 else right=middle-1 end
+            end
+            if index then
+                local cue,following=cues[index],cues[index+1]
+                value=cue.text~="" and cue.text or data.title
+                caption=(manual and "Manual sync • " or "")..data.title
+                if following and following.time>cue.time then progress=math.clamp((position-cue.time)/(following.time-cue.time),0,1) end
+            end
+        end
+        local state=data.stopped and "stopped" or data.playing and "playing" or "paused"
+        if state=="paused" then caption="Pause • "..caption elseif state=="stopped" then caption="Stopped • "..tostring(data.artist or "") end
+        local nextSignature=value.."\0"..caption.."\0"..state
+        if signature~=nextSignature then signature=nextSignature; transition(value,caption,state) end
+        if clock>transitionUntil and settings.motion and not settings.lowFx and lineWidth>clip.AbsoluteSize.X and clip.AbsoluteSize.X>0 then
+            local overflow=lineWidth-clip.AbsoluteSize.X+8
+            local phase=(clock-transitionUntil)% (4+overflow/24*2)
+            local offset=phase<2 and 0 or phase<2+overflow/24 and (phase-2)*24 or phase<4+overflow/24 and overflow or math.max(0,overflow-(phase-4-overflow/24)*24)
+            incoming.Position=UDim2.fromOffset(-offset,0)
+        end
+        incoming.TextColor3=palette.text
+        emblem.TextColor3,fill.BackgroundColor3=palette.accent,palette.accent
+        controls.play.Text=data.playing and "II" or ">"
+        fill.Size=UDim2.fromScale(progress,1)
+        hint.Text=#cues>0 and not position and (lrcMessage.." • позиция недоступна, используй Sync 0:00") or hint.Text
+    end
+    table.insert(cleanups,function() cancel(); root:Destroy(); expanded:Destroy() end)
+    return api
+end
+controlRows.musicIsland=initializeMusicIsland()
+end
+
 local function getRaidKills()
     local records = game:GetService("ReplicatedStorage"):FindFirstChild("Players")
     local record = records and records:FindFirstChild(player.Name)
@@ -1970,13 +2144,13 @@ local function updateHud(dt)
     local camera = workspace.CurrentCamera
     if camera then
         local viewport = camera.ViewportSize
-        local hudScale = math.min(1, math.max(0.2, (viewport.X - 32) / 390), math.max(0.2, (viewport.Y - 32) / 560))
+        local hudScale = math.min(1, math.max(0.2, (viewport.X - 32) / math.max(390, settings._musicIslandWidth or 420)), math.max(0.2, (viewport.Y - 32) / 560))
         islandScale.Scale = hudScale
         inspectorScale.Scale = hudScale
         island.Position = UDim2.new(0.5, 0, 0, math.min(settings.islandY, math.max(0, viewport.Y - 300 * hudScale)))
     end
     island.Visible = settings.island
-    local desiredSize = islandExpanded and UDim2.fromOffset(420, 300) or UDim2.fromOffset(420, 48)
+    local desiredSize = islandExpanded and UDim2.fromOffset(420, 300) or UDim2.fromOffset(settings._musicIslandWidth or 420, 48)
     island.Size = island.Size:Lerp(desiredSize, 1 - math.exp(-14 * dt))
     islandScroll.Visible = islandExpanded
     if hudElapsed >= 0.2 then
@@ -2029,7 +2203,7 @@ local treeGroups = {
     ["Бинды"] = { "Инвентарь", "Dynamic Island", "Управление", "Назначения функций" },
     ["Настройки"] = { "Оформление", "Клиент", "Music", "Performance" },
 }
-local settingGroup = { adaptiveEsp = "Performance", lowFx = "Performance", perfDebug = "Performance", yandexPlay = "Music", spotifyPlay = "Music", musicPlay = "Music", musicVolume = "Music", musicRepeat = "Music", musicIndex = "Music", noRecoil = "Weapon Tuning", aimEase = "Область и плавность", aimFilter = "Область и плавность", graphics = "Visual Studio", gfxTier = "Visual Studio", gfxLook = "Visual Studio", echo = "Оформление", echoDelay = "Оформление", echoFreeze = "Оформление", motion = "Оформление", killFx = "Оформление", crossStyle = "Прицел", crossWidth = "Прицел", noLeaves = "Vegetation", noGrass = "Vegetation", corpseEsp = "Loot", itemEsp = "Loot", lootThrough = "Loot", lootRange = "Loot", lootTextSize = "Loot",
+local settingGroup = { islandMusic = "Dynamic Island", adaptiveEsp = "Performance", lowFx = "Performance", perfDebug = "Performance", yandexPlay = "Music", spotifyPlay = "Music", musicPlay = "Music", musicVolume = "Music", musicRepeat = "Music", musicIndex = "Music", noRecoil = "Weapon Tuning", aimEase = "Область и плавность", aimFilter = "Область и плавность", graphics = "Visual Studio", gfxTier = "Visual Studio", gfxLook = "Visual Studio", echo = "Оформление", echoDelay = "Оформление", echoFreeze = "Оформление", motion = "Оформление", killFx = "Оформление", crossStyle = "Прицел", crossWidth = "Прицел", noLeaves = "Vegetation", noGrass = "Vegetation", corpseEsp = "Loot", itemEsp = "Loot", lootThrough = "Loot", lootRange = "Loot", lootTextSize = "Loot",
     noVisor = "Vision", cameraFov = "Vision", cameraFovValue = "Vision",
     viewmodel = "Viewmodel", vmX = "Viewmodel", vmY = "Viewmodel", vmZ = "Viewmodel", sticky = "Наведение", noFog = "Освещение", bubbles = "Оформление", snow = "Оформление", snowDrifts = "Оформление", friendHats = "Оформление", espFps = "Цвет и оформление", adaptiveText = "Подписи",
     aim = "Наведение", aimPlayers = "Цели и проверки", aimDummies = "Цели и проверки",
@@ -4126,6 +4300,7 @@ local renderState = { elapsed = 1, visualElapsed = 1, perfElapsed = 0, perfFrame
 RunService:BindToRenderStep(renderName, Enum.RenderPriority.Last.Value + 1, function(dt)
     local perfStarted = settings.perfDebug and os.clock()
     local camera = workspace.CurrentCamera
+    controlRows.musicIsland.step(dt)
     updateHud(dt)
     updateWinter(dt)
     soulFx.step(dt)
