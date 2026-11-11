@@ -23,6 +23,10 @@ end
 
 -- Every exposed setting has its own description, bounds and keyboard actions.
 local definitions = {
+    { "mapPlayers", false, "Map Players", "Игроки на штатной большой карте Estonian Border. Открой карту на M. Позиции доступны только для переданных клиенту персонажей.", "ESP" },
+    { "mapNames", true, "Map Names", "Показывать ники рядом с метками игроков на карте.", "ESP" },
+    { "mapFriendsOnly", false, "Map Friends Only", "Показывать на карте только тиммейтов из списка Friends.", "ESP" },
+    { "mapTextSize", 11, "Map Text Size", "Размер ников на карте. Тиммейты отмечены мятным цветом и ALLY.", "ESP", 8, 16 },
     { "containerReach", 250, "Container Reach", "Дальность Inspect для сундуков: 25–1500 studs. Наведи прицел на сундук; доступны только переданные клиенту предметы.", "Настройки", 25, 1500 },
     { "containerEsp", false, "Containers", "Метки доступных сундуков в папках Containers/Chests. Дальность — Loot Distance.", "ESP" },
     { "auroraEsp", false, "Aurora", "Отдельные метки сундуков с Aurora/Аврора в имени или DisplayName. Если имя модели другое, включи Containers.", "ESP" },
@@ -2739,13 +2743,13 @@ describe(search, "Ищет по всем разделам, названиям и
 
 local treeGroups = {
     ["Наведение"] = { "Наведение", "Цели и проверки", "Область и плавность", "Weapon Tuning" },
-    ESP = { "Общее", "Подписи", "Геометрия", "Цвет и оформление", "Loot" },
+    ESP = { "Общее", "Подписи", "Геометрия", "Цвет и оформление", "Loot" , "Map" },
     ["Мир"] = { "Освещение", "Vegetation", "Visual Studio" },
     ["Камера"] = { "Зум", "Прицел", "Vision", "Viewmodel" },
     ["Бинды"] = { "Инвентарь", "Dynamic Island", "Управление", "Назначения функций" },
     ["Настройки"] = { "Оформление", "Клиент", "Music", "Performance" },
 }
-local settingGroup = { containerReach="Инвентарь", containerEsp="Loot", auroraEsp="Loot", espStyle = "Цвет и оформление", skinTextures = "Оформление", islandMusic = "Dynamic Island", adaptiveEsp = "Performance", lowFx = "Performance", perfDebug = "Performance", yandexPlay = "Music", spotifyPlay = "Music", musicPlay = "Music", musicVolume = "Music", musicRepeat = "Music", musicIndex = "Music", noRecoil = "Weapon Tuning", aimEase = "Область и плавность", aimFilter = "Область и плавность", graphics = "Visual Studio", gfxTier = "Visual Studio", gfxLook = "Visual Studio", echo = "Оформление", echoDelay = "Оформление", echoFreeze = "Оформление", motion = "Оформление", killFx = "Оформление", crossStyle = "Прицел", crossWidth = "Прицел", noLeaves = "Vegetation", noGrass = "Vegetation", corpseEsp = "Loot", itemEsp = "Loot", lootThrough = "Loot", lootRange = "Loot", lootTextSize = "Loot",
+local settingGroup = { mapPlayers="Map", mapNames="Map", mapFriendsOnly="Map", mapTextSize="Map", containerReach="Инвентарь", containerEsp="Loot", auroraEsp="Loot", espStyle = "Цвет и оформление", skinTextures = "Оформление", islandMusic = "Dynamic Island", adaptiveEsp = "Performance", lowFx = "Performance", perfDebug = "Performance", yandexPlay = "Music", spotifyPlay = "Music", musicPlay = "Music", musicVolume = "Music", musicRepeat = "Music", musicIndex = "Music", noRecoil = "Weapon Tuning", aimEase = "Область и плавность", aimFilter = "Область и плавность", graphics = "Visual Studio", gfxTier = "Visual Studio", gfxLook = "Visual Studio", echo = "Оформление", echoDelay = "Оформление", echoFreeze = "Оформление", motion = "Оформление", killFx = "Оформление", crossStyle = "Прицел", crossWidth = "Прицел", noLeaves = "Vegetation", noGrass = "Vegetation", corpseEsp = "Loot", itemEsp = "Loot", lootThrough = "Loot", lootRange = "Loot", lootTextSize = "Loot",
     noVisor = "Vision", cameraFov = "Vision", cameraFovValue = "Vision",
     viewmodel = "Viewmodel", vmX = "Viewmodel", vmY = "Viewmodel", vmZ = "Viewmodel", sticky = "Наведение", noFog = "Освещение", bubbles = "Оформление", snow = "Оформление", snowDrifts = "Оформление", friendHats = "Оформление", espFps = "Цвет и оформление", adaptiveText = "Подписи",
     aim = "Наведение", aimPlayers = "Цели и проверки", aimDummies = "Цели и проверки",
@@ -5094,12 +5098,110 @@ task.spawn(function()
     end
 end)
 
+do
+local function initializeMapOverlay()
+    local api={elapsed=1,marks={},state="Off"}
+    local host,container
+    local function clear()
+        if host then host:Destroy() end
+        host,container=nil,nil; table.clear(api.marks)
+    end
+    local function shown(object)
+        while object and object~=playerGui do
+            if object:IsA("GuiObject") and not object.Visible then return false end
+            if object:IsA("ScreenGui") and not object.Enabled then return false end
+            object=object.Parent
+        end
+        return true
+    end
+    api.project=function(position,mine,anchor,size)
+        -- Estonian Border: X on the map follows world Z, Y follows world X.
+        -- Anchor to the game's live self marker, not a guessed world origin.
+        return anchor.X+(position.Z-mine.Z)/size,anchor.Y+(position.X-mine.X)/size
+    end
+    api.step=function(dt)
+        api.elapsed+=dt
+        if not settings.mapPlayers then if host then clear() end; api.state="Off"; return end
+        if api.elapsed<.1 then return end; api.elapsed=0
+        local mainGui=playerGui:FindFirstChild("MainGui")
+        local main=mainGui and mainGui:FindFirstChild("MainFrame")
+        local frame=main and main:FindFirstChild("MapFrame")
+        local map=frame and frame:FindFirstChild("MainFrame")
+        local markers=map and map:FindFirstChild("Markers")
+        local selfMarker=markers and markers:FindFirstChild("SelfMarker")
+        local maps=map and map:FindFirstChild("Maps")
+        local mine=player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+        if not frame or not shown(frame) or not maps or not markers or not selfMarker or not mine then
+            if host then host.Visible=false end; api.state="Open map in a raid"; return
+        end
+        local current
+        local worldName=workspace:GetAttribute("MapName")
+        for _,candidate in ipairs(maps:GetChildren()) do
+            if candidate:IsA("GuiObject") and candidate.Visible and candidate:GetAttribute("MapName")==worldName then current=candidate; break end
+        end
+        local size=current and current:GetAttribute("SizeReal")
+        -- Only the exported map orientation is supported. Unknown maps stay empty.
+        if worldName~="Estonian Border" or type(size)~="number" or size~=size or size<100 or size>100000
+            or not selfMarker.Visible or markers.AbsoluteSize.X<=0 or markers.AbsoluteSize.Y<=0 then
+            if host then host.Visible=false end; api.state="Unsupported map or no self marker"; return
+        end
+        if current.Rotation~=0 or math.abs(current.AbsoluteSize.X-markers.AbsoluteSize.X)>2
+            or math.abs(current.AbsoluteSize.Y-markers.AbsoluteSize.Y)>2 then
+            if host then host.Visible=false end; api.state="Map alignment unavailable"; return
+        end
+        if not host or not host.Parent or container~=markers then
+            clear(); container=markers
+            host=create("Frame",markers,{Name="OktanMapPlayers",Size=UDim2.fromScale(1,1),BackgroundTransparency=1,BorderSizePixel=0,ClipsDescendants=true,ZIndex=15})
+        end
+        host.Visible=true
+        local anchor=Vector2.new(selfMarker.Position.X.Scale+selfMarker.Position.X.Offset/markers.AbsoluteSize.X,selfMarker.Position.Y.Scale+selfMarker.Position.Y.Offset/markers.AbsoluteSize.Y)
+        local seen,count={},0
+        for _,owner in ipairs(Players:GetPlayers()) do
+            local character=owner.Character
+            local root=character and character:FindFirstChild("HumanoidRootPart")
+            local humanoid=character and character:FindFirstChildOfClass("Humanoid")
+            if owner~=player and root and root:IsA("BasePart") and humanoid and humanoid.Health>0 and count<200 then
+                local friend=isFriend(owner)
+                if not settings.mapFriendsOnly or friend then
+                    local u,v=api.project(root.Position,mine.Position,anchor,size)
+                    if u>=0 and u<=1 and v>=0 and v<=1 then
+                        count+=1; seen[owner]=true
+                        local mark=api.marks[owner]
+                        if not mark then
+                            local dot=create("Frame",host,{Name="PlayerDot",AnchorPoint=Vector2.new(.5,.5),Size=UDim2.fromOffset(8,8),BorderSizePixel=0,ZIndex=16})
+                            rounded(dot,8); stroke(dot,Color3.fromRGB(8,17,23),2)
+                            local name=text(dot,owner.Name,{Name="PlayerName",Position=UDim2.fromOffset(12,-7),Size=UDim2.fromOffset(160,22),TextXAlignment=Enum.TextXAlignment.Left,TextSize=11,TextStrokeColor3=Color3.fromRGB(6,12,16),TextStrokeTransparency=.2,ZIndex=17})
+                            mark={dot=dot,name=name}; api.marks[owner]=mark
+                        end
+                        local color=friend and Color3.fromRGB(125,239,190) or Color3.fromHSV(settings.espHue/360,settings.espSaturation/100,settings.espValue/100)
+                        mark.dot.Position=UDim2.fromScale(u,v)
+                        mark.dot.BackgroundColor3=color
+                        mark.name.Text=owner.Name..(friend and " · ALLY" or "")
+                        mark.name.TextColor3=color
+                        mark.name.Visible=settings.mapNames
+                        mark.name.TextSize=settings.mapTextSize
+                        mark.name.Position=UDim2.fromOffset(u>.8 and -172 or 12,v>.98 and -22 or v<.02 and 0 or -7)
+                        mark.name.TextXAlignment=u>.8 and Enum.TextXAlignment.Right or Enum.TextXAlignment.Left
+                    end
+                end
+            end
+        end
+        for owner,mark in pairs(api.marks) do if not seen[owner] then mark.dot:Destroy(); api.marks[owner]=nil end end
+        api.state="Estonian Border · "..count.." players"
+    end
+    table.insert(cleanups,clear)
+    return api
+end
+controlRows.mapOverlay=initializeMapOverlay()
+end
+
 local renderState = { elapsed = 1, visualElapsed = 1, perfElapsed = 0, perfFrames = 0, perfTotal = 0, perfEsp = 0, perfCamera = 0, perfPeak = 0 }
 RunService:BindToRenderStep(renderName, Enum.RenderPriority.Last.Value + 1, function(dt)
     local perfStarted = settings.perfDebug and os.clock()
     local camera = workspace.CurrentCamera
     controlRows.musicIsland.step(dt)
     updateHud(dt)
+    controlRows.mapOverlay.step(dt)
     controlRows.friends.step(dt)
     controlRows.studio.step()
     updateWinter(dt)
