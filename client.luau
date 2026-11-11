@@ -1994,12 +1994,12 @@ local inspectTarget
 local inspector = create("Frame", gui, {
     AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -24, 0.5, 0),
     Size = UDim2.fromOffset(360, 350), BackgroundColor3 = palette.background,
-    BackgroundTransparency = 0.06, BorderSizePixel = 0, Visible = false, ZIndex = 16,
+    BackgroundTransparency = 0.035, BorderSizePixel = 0, Visible = false, ZIndex = 16,
 })
 rounded(inspector, 18)
 stroke(inspector, palette.accent)
 local inspectorScale = create("UIScale", inspector, { Scale = 1 })
-text(inspector, "INVENTORY", {
+text(inspector, "INSPECT / LOADOUT", {
     Position = UDim2.fromOffset(18, 16), Size = UDim2.fromOffset(280, 26),
     TextXAlignment = Enum.TextXAlignment.Left, Font = Enum.Font.GothamBold,
 })
@@ -2039,7 +2039,8 @@ local function inspectNearest()
     if inspector.Visible then inspector.Visible = false; inspectTarget = nil; return end
     local camera = workspace.CurrentCamera
     if not camera then return end
-    local nearest, best = nil, settings.inspectRadius
+    local nearest, best = controlRows.inventoryArt.containerTarget(camera), settings.inspectRadius
+    if nearest then best=0 end
     local center = camera.ViewportSize * 0.5
     for _, other in ipairs(Players:GetPlayers()) do
         local character = other.Character
@@ -2105,7 +2106,7 @@ diagnosticsButton.Visible = false
 inspector.Size = UDim2.fromOffset(670, 540)
 local preview = create("ViewportFrame", inspector, {
     Position = UDim2.fromOffset(16, 58), Size = UDim2.fromOffset(210, 380),
-    BackgroundColor3 = Color3.fromRGB(19, 19, 23), BackgroundTransparency = 0.1,
+    BackgroundColor3 = palette.panel, BackgroundTransparency = 0.12,
     BorderSizePixel = 0, Ambient = Color3.fromRGB(180, 180, 185),
     LightColor = Color3.fromRGB(240, 240, 245),
     LightDirection = Vector3.new(-1, -1, -1),
@@ -2153,7 +2154,9 @@ connect(nextInventory.Activated, function()
 end)
 local function visualCopy(source, parent)
     if not source then return nil end
-    local ok, copy = pcall(function() return source:Clone() end)
+    local archivable=source.Archivable
+    local ok, copy = pcall(function() source.Archivable=true; return source:Clone() end)
+    source.Archivable=archivable
     if not ok or not copy then return nil end
     for _, object in ipairs(copy:GetDescendants()) do
         if object:IsA("LuaSourceContainer") then object:Destroy() end
@@ -2184,23 +2187,154 @@ local function rebuildPreview(character)
     previewCenter, previewRadius = cf.Position, math.max(size.X, size.Y, size.Z, 2) * 2.1
     previewCamera.CFrame = CFrame.lookAt(previewCenter + Vector3.new(0, size.Y * 0.08, previewRadius), previewCenter)
 end
-local function itemImage(item)
-    if item:IsA("Tool") and item.TextureId ~= "" then return item.TextureId end
-    for _, key in ipairs({ "Icon", "Image", "Thumbnail" }) do
-        local value = item:GetAttribute(key)
-        if type(value) == "string" and value:match("^rbxassetid://%d+$") then return value end
+do
+local function initializeInventoryArt()
+    local api={pending={},epoch=0}
+    local imageCache=setmetatable({},{__mode="k"})
+    local function source(item)
+        if item and item:IsA("ObjectValue") then return item.Value or item end
+        return item
     end
-    return nil
+    api.source=source
+    local function imageValue(value)
+        if type(value)=="number" and value>0 and value%1==0 then return "rbxassetid://"..string.format("%.0f",value) end
+        if type(value)~="string" then return nil end
+        if value:match("^%d+$") then return "rbxassetid://"..value end
+        if value:match("^rbxassetid://%d+$") or value:match("^rbxasset://") or value:match("^rbxthumb://") then return value end
+        local id=value:match("^https?://www%.roblox%.com/asset/%?id=(%d+)")
+        return id and "rbxassetid://"..id or nil
+    end
+    local function resolveImage(item)
+        item=source(item); if not item then return nil end
+        if item:IsA("Tool") then local id=imageValue(item.TextureId); if id then return id end end
+        for _,key in ipairs({"Icon","Image","Thumbnail","ImageId","IconId","TextureId"}) do
+            local id=imageValue(item:GetAttribute(key)); if id then return id end
+            local child=item:FindFirstChild(key)
+            if child and (child:IsA("StringValue") or child:IsA("NumberValue") or child:IsA("IntValue")) then id=imageValue(child.Value); if id then return id end end
+        end
+        local count=0
+        for _,child in ipairs(item:GetDescendants()) do
+            count+=1; if count>128 then break end
+            if child:IsA("ImageLabel") or child:IsA("ImageButton") then local id=imageValue(child.Image); if id then return id end end
+        end
+        return nil
+    end
+    api.image=function(item)
+        item=source(item); if not item then return nil end
+        local cached=imageCache[item]
+        if cached and os.clock()-cached.at<2 then return cached.id end
+        local id=resolveImage(item)
+        imageCache[item]={at=os.clock(),id=id}
+        return id
+    end
+    api.containerTarget=function(camera)
+        local ray=camera:ViewportPointToRay(camera.ViewportSize.X*.5,camera.ViewportSize.Y*.5)
+        local params=RaycastParams.new(); params.FilterType=Enum.RaycastFilterType.Exclude
+        params.FilterDescendantsInstances=player.Character and {player.Character,camera} or {camera}
+        local hit=workspace:Raycast(ray.Origin,ray.Direction*40,params)
+        local current=hit and hit.Instance
+        for _=1,12 do
+            if not current or current==workspace then break end
+            local inventory=current:FindFirstChild("Inventory")
+            local properties=current:FindFirstChild("Properties")
+            if current:IsA("Model") and inventory and (current.Parent and current.Parent.Name=="Containers" or properties and properties:GetAttribute("ContainerType")=="Container") then
+                return {Name=current:GetAttribute("DisplayName") or current.Name,Character=current,Parent=Players,Corpse=true,Container=true}
+            end
+            current=current.Parent
+        end
+    end
+    local function viewport(card,item,character)
+        local candidates={source(item)}
+        local equipped=character and character:FindFirstChild(item.Name)
+        if equipped then table.insert(candidates,equipped) end
+        local catalog=game:GetService("ReplicatedStorage"):FindFirstChild("ItemsList")
+        local catalogItem=catalog and catalog:FindFirstChild(item.Name)
+        if catalogItem then table.insert(candidates,catalogItem) end
+        local definition=source(item)
+        if definition then
+            for _,name in ipairs({"Model","ViewModel","WorldModel","DisplayModel"}) do
+                local visual=definition:FindFirstChild(name)
+                if visual and visual:IsA("ObjectValue") and visual.Value then table.insert(candidates,visual.Value) end
+            end
+        end
+        for _,model in ipairs(candidates) do
+            if model and (model:IsA("BasePart") or model:FindFirstChildWhichIsA("BasePart",true)) and #model:GetDescendants()<=180 then
+                local ok,drawn=pcall(function()
+                    local frame=create("ViewportFrame",card,{Name="ItemModel",BackgroundTransparency=1,Position=UDim2.fromOffset(8,3),Size=UDim2.new(1,-16,0,53),Ambient=Color3.fromRGB(190,205,215),LightColor=Color3.fromRGB(235,245,255),LightDirection=Vector3.new(-1,-1,-1)})
+                    local world=create("WorldModel",frame)
+                    local wrapper=create("Model",world)
+                    local copy=visualCopy(model,wrapper)
+                    if not copy then frame:Destroy(); return false end
+                    local cf,size=wrapper:GetBoundingBox()
+                    local radius=math.max(size.X,size.Y,size.Z,.5)*1.9
+                    frame.CurrentCamera=create("Camera",frame,{FieldOfView=35,CFrame=CFrame.lookAt(cf.Position+Vector3.new(radius*.18,radius*.12,radius),cf.Position)})
+                    return true
+                end)
+                if ok and drawn then return true end
+            end
+        end
+        return false
+    end
+    api.clear=function() api.epoch+=1; table.clear(api.pending); if controlRows.hudMotion then controlRows.hudMotion.clear() end end
+    api.draw=function(card,item,character,reference)
+        reference=reference or item
+        local durability,maximum=reference:GetAttribute("Durability"),reference:GetAttribute("MaxDurability")
+        if type(durability)=="number" and type(maximum)=="number" and maximum>0 then
+            local track=create("Frame",card,{Name="ItemDurability",Position=UDim2.new(0,10,0,52),Size=UDim2.new(1,-20,0,2),BackgroundColor3=palette.control,BorderSizePixel=0})
+            rounded(track,2)
+            local fill=create("Frame",track,{Size=UDim2.fromScale(math.clamp(durability/maximum,0,1),1),BackgroundColor3=palette.accent,BorderSizePixel=0}); rounded(fill,2)
+        end
+        local fallback=text(card,"",{Name="ArtStatus",Position=UDim2.fromOffset(8,8),Size=UDim2.new(1,-16,0,36),TextSize=10,TextColor3=palette.muted})
+        local id=api.image(item)
+        local function modelFallback()
+            if not card.Parent then return end
+            fallback.Text=viewport(card,item,character) and "" or "NO PREVIEW"
+        end
+        if not id then modelFallback(); return end
+        fallback.Text="LOADING"
+        local image=create("ImageLabel",card,{Name="ItemIcon",BackgroundTransparency=1,Image=id,ImageTransparency=1,ScaleType=Enum.ScaleType.Fit,Position=UDim2.fromOffset(10,4),Size=UDim2.new(1,-20,0,50)})
+        local entry={card=card,image=image,fallback=fallback,age=0,failed=false,model=modelFallback,epoch=api.epoch}
+        table.insert(api.pending,entry)
+        task.spawn(function()
+            pcall(function() game:GetService("ContentProvider"):PreloadAsync({image},function(_,status)
+                if status~=Enum.AssetFetchStatus.Success then entry.failed=true end
+            end) end)
+        end)
+    end
+    api.step=function(dt)
+        for i=#api.pending,1,-1 do
+            local entry=api.pending[i]
+            if entry.epoch~=api.epoch or not entry.card.Parent then table.remove(api.pending,i)
+            else
+                entry.age+=dt
+                if entry.image.IsLoaded then
+                    entry.fallback.Text=""
+                    if settings.motion and not settings.lowFx then TweenService:Create(entry.image,TweenInfo.new(.22),{ImageTransparency=0}):Play() else entry.image.ImageTransparency=0 end
+                    table.remove(api.pending,i)
+                elseif entry.failed or entry.age>3 then
+                    entry.image:Destroy(); entry.model(); table.remove(api.pending,i)
+                end
+            end
+        end
+    end
+    return api
 end
+controlRows.inventoryArt=initializeInventoryArt()
+end
+
+local function itemImage(item) return controlRows.inventoryArt.image(item) end
 local function collectInventory(owner)
     local categories = { Gear = {}, Weapons = {}, Loot = {} }
     local character = owner.Character
     local assigned, seen = {}, {}
     local function add(category, item, slot)
         if not item then return end
+        local reference=item
+        item=controlRows.inventoryArt.source(item)
+        if not item then return end
         if not seen[item] then
             seen[item] = true
-            table.insert(categories[category], { item = item, slot = slot })
+            table.insert(categories[category], { item = item, reference = reference, slot = slot })
         end
         assigned[item] = category
     end
@@ -2220,7 +2354,7 @@ local function collectInventory(owner)
         if not container or visited[container] then return end
         visited[container] = true
         for _, item in ipairs(container:GetChildren()) do
-            if not assigned[item] then add("Loot", item, container.Name) end
+            if not assigned[controlRows.inventoryArt.source(item)] then add("Loot", item, item:GetAttribute("Slot") or container.Name) end
             for _, child in ipairs(item:GetChildren()) do
                 if (child.Name == "Inventory" or child.Name == "Contents")
                     and (child:IsA("Folder") or child:IsA("Model")) then scan(child) end
@@ -2248,7 +2382,9 @@ local function updateInventoryCards()
         inventorySignature, previewSignature = nil, nil
         return
     end
+    if type(inspectTarget)=="table" and inspectTarget.Container and previewSignature==nil then selectedInventoryTab,inventoryPage="Loot",1 end
     local categories = collectInventory(inspectTarget)
+    settings._inventoryCounts=string.format("%d gear  /  %d weapons  /  %d loot",#categories.Gear,#categories.Weapons,#categories.Loot)
     local entries = categories[selectedInventoryTab]
     local pagesCount = math.max(1, math.ceil(#entries / 9))
     inventoryPage = math.clamp(inventoryPage, 1, pagesCount)
@@ -2258,16 +2394,21 @@ local function updateInventoryCards()
     for _, name in ipairs({ "Gear", "Weapons", "Loot" }) do
         local list = categories[name]
         for _, entry in ipairs(list) do
-            table.insert(signature, name .. "/" .. entry.slot .. "/" .. entry.item.Name .. "/" .. tostring(itemImage(entry.item)))
+            table.insert(signature, name .. "/" .. entry.slot .. "/" .. entry.item.Name .. "/" .. tostring(itemImage(entry.item)) .. "/" .. tostring(entry.reference:GetAttribute("Amount")) .. "/" .. tostring(entry.reference:GetAttribute("Durability")))
             if name ~= "Loot" then table.insert(equipment, name .. entry.item.Name) end
         end
     end
     local currentPreview = table.concat(equipment, "|")
     if previewSignature ~= currentPreview then
-        rebuildPreview(inspectTarget.Character)
+        if type(inspectTarget)=="table" and inspectTarget.Container then
+            if previewWorld then previewWorld:Destroy(); previewWorld=nil end
+            previewCenter=nil
+        else rebuildPreview(inspectTarget.Character) end
         previewSignature = currentPreview
     end
-    previewName.Text = ((type(inspectTarget) == "table" and inspectTarget.Corpse) and "CORPSE · " or "") .. inspectTarget.Name
+    previewName.Text = ((type(inspectTarget) == "table" and inspectTarget.Container) and "CONTAINER · " or (type(inspectTarget) == "table" and inspectTarget.Corpse) and "CORPSE · " or "") .. inspectTarget.Name
+    previousInventory.Visible=pagesCount>1
+    nextInventory.Visible=pagesCount>1
     inventoryNote.Text = string.format("%d items  |  Page %d / %d", #entries, inventoryPage, pagesCount)
     if (type(inspectTarget) == "table" and inspectTarget.Corpse) and not deltaInventory(inspectTarget) then
         inventoryNote.Text = "Лут недоступен клиенту. Показано только распознанное снаряжение."
@@ -2275,10 +2416,13 @@ local function updateInventoryCards()
     local current = table.concat(signature, "|")
     if inventorySignature == current then return end
     inventorySignature = current
+    controlRows.inventoryArt.clear()
     for _, card in ipairs(cards) do card:Destroy() end
     table.clear(cards)
     for name, control in pairs(tabsInventory) do
         control.TextColor3 = name == selectedInventoryTab and palette.accent or palette.muted
+        control.BackgroundColor3=name==selectedInventoryTab and palette.control:Lerp(palette.accent,.12) or palette.control
+        control.BackgroundTransparency=name==selectedInventoryTab and .05 or .45
     end
     for index = (inventoryPage - 1) * 9 + 1, math.min(inventoryPage * 9, #entries) do
         local entry = entries[index]
@@ -2286,45 +2430,15 @@ local function updateInventoryCards()
             BackgroundColor3 = palette.panel, BorderSizePixel = 0, LayoutOrder = index,
         })
         rounded(card, 10)
-        stroke(card)
-        local imageId = itemImage(entry.item)
-        if imageId then
-            create("ImageLabel", card, {
-                BackgroundTransparency = 1, Image = imageId, ScaleType = Enum.ScaleType.Fit,
-                Position = UDim2.fromOffset(12, 6), Size = UDim2.new(1, -24, 0, 48),
-            })
-        else
-            local character = inspectTarget.Character
-            local model = character and character:FindFirstChild(entry.item.Name)
-            if not model and entry.item:IsA("Model") then model = entry.item end
-            if model and model:FindFirstChildWhichIsA("BasePart", true) then
-                local viewport = create("ViewportFrame", card, {
-                    BackgroundTransparency = 1, Position = UDim2.fromOffset(8, 4),
-                    Size = UDim2.new(1, -16, 0, 52), Ambient = Color3.fromRGB(200, 200, 200),
-                })
-                local world = create("WorldModel", viewport)
-                local copy = visualCopy(model, world)
-                if copy and copy:IsA("Model") then
-                    local cf, size = copy:GetBoundingBox()
-                    local camera = create("Camera", viewport, {
-                        FieldOfView = 40,
-                        CFrame = CFrame.lookAt(cf.Position + Vector3.new(0, 0, math.max(size.X, size.Y, size.Z) * 2), cf.Position),
-                    })
-                    viewport.CurrentCamera = camera
-                end
-            else
-                text(card, selectedInventoryTab == "Weapons" and "WEAPON" or "ITEM", {
-                    Position = UDim2.fromOffset(8, 10), Size = UDim2.new(1, -16, 0, 34),
-                    TextColor3 = palette.muted, TextSize = 10,
-                })
-            end
-        end
+        stroke(card,palette.accent).Transparency=.82
+        controlRows.hudMotion.card(card,index)
+        controlRows.inventoryArt.draw(card,entry.item,inspectTarget.Character,entry.reference)
         local caption = text(card, entry.item.Name, {
             Position = UDim2.fromOffset(6, 56), Size = UDim2.new(1, -12, 0, 34),
             TextWrapped = true, TextSize = 12, TextScaled = true,
         })
         create("UITextSizeConstraint", caption, { MinTextSize = 8, MaxTextSize = 12 })
-        text(card, entry.slot, {
+        text(card, entry.slot .. (entry.reference:GetAttribute("Amount") and " · ×"..tostring(entry.reference:GetAttribute("Amount")) or ""), {
             Position = UDim2.fromOffset(6, 91), Size = UDim2.new(1, -12, 0, 14),
             TextSize = 9, TextColor3 = palette.muted,
         })
@@ -2336,6 +2450,7 @@ connect(inspector:GetPropertyChangedSignal("Visible"), function()
     if inspector.Visible then
         updateInventoryCards()
     else
+        controlRows.inventoryArt.clear()
         for _, card in ipairs(cards) do card:Destroy() end
         table.clear(cards)
         if previewWorld then previewWorld:Destroy(); previewWorld = nil end
@@ -2343,11 +2458,101 @@ connect(inspector:GetPropertyChangedSignal("Visible"), function()
     end
 end)
 
-local inventoryElapsed = 1
-local hudElapsed = 1
+do
+local function initializeHudMotion()
+    local api={tweens={},clock=0,elapsed=1,previewElapsed=0}
+    local titleLine=create("Frame",inspector,{Name="InspectorAccent",Position=UDim2.fromOffset(18,46),Size=UDim2.new(1,-36,0,1),BackgroundColor3=palette.accent,BackgroundTransparency=.55,BorderSizePixel=0})
+    local mode=text(inspector,"LIVE LOADOUT",{Position=UDim2.new(1,-190,0,18),Size=UDim2.fromOffset(134,22),TextColor3=palette.accent,TextSize=9,BackgroundColor3=palette.control,BackgroundTransparency=.3})
+    rounded(mode,8)
+    local empty=text(preview,"",{Name="InspectorPreviewState",Position=UDim2.new(0,12,1,-72),Size=UDim2.new(1,-24,0,54),TextWrapped=true,TextSize=11,TextColor3=palette.muted})
+    local totals=text(inspector,"",{Name="InspectorTotals",Position=UDim2.fromOffset(16,500),Size=UDim2.fromOffset(210,22),TextSize=10,TextColor3=palette.muted})
+    local logo=create("Frame",islandHeader,{Name="IslandMark",Position=UDim2.fromOffset(18,17),Size=UDim2.fromOffset(12,12),Rotation=-15,BackgroundTransparency=1,BorderSizePixel=0})
+    rounded(logo,4); local logoRim=stroke(logo,palette.accent); logoRim.Thickness=2
+    islandBrand.Position=UDim2.fromOffset(42,0); islandBrand.Size=UDim2.fromOffset(66,44)
+    local divider=create("Frame",island,{Position=UDim2.new(0,20,0,47),Size=UDim2.new(1,-40,0,1),BackgroundColor3=palette.accent,BackgroundTransparency=.78,BorderSizePixel=0})
+    local dashboard=create("Frame",islandList,{Name="IslandDashboard",Size=UDim2.new(1,0,0,68),BackgroundTransparency=1,LayoutOrder=-20})
+    local values={}
+    for i,label in ipairs({"RAID / SESSION","BOUND KEYS","TEAMMATES"}) do
+        local tile=create("Frame",dashboard,{Position=UDim2.new((i-1)/3,3,0,3),Size=UDim2.new(1/3,-6,1,-6),BackgroundColor3=palette.panel,BackgroundTransparency=.18,BorderSizePixel=0})
+        rounded(tile,12); stroke(tile,palette.accent).Transparency=.88
+        text(tile,label,{Position=UDim2.fromOffset(10,8),Size=UDim2.new(1,-20,0,12),TextSize=8,TextColor3=palette.muted,TextXAlignment=Enum.TextXAlignment.Left})
+        values[i]=text(tile,"—",{Position=UDim2.fromOffset(10,26),Size=UDim2.new(1,-20,0,26),TextSize=20,Font=Enum.Font.GothamBold,TextColor3=palette.text,TextXAlignment=Enum.TextXAlignment.Left})
+    end
+    text(islandList,"SHORTCUTS",{Name="IslandShortcutsTitle",LayoutOrder=-1,Size=UDim2.new(1,0,0,24),TextSize=9,TextColor3=palette.muted,TextXAlignment=Enum.TextXAlignment.Left})
+    api.clear=function()
+        for _,tween in ipairs(api.tweens) do tween:Cancel() end
+        table.clear(api.tweens)
+    end
+    api.card=function(card,index)
+        local hoverTween
+        local function hover(color)
+            if hoverTween then hoverTween:Cancel() end
+            if not settings.motion or settings.lowFx then card.BackgroundColor3=color; return end
+            hoverTween=TweenService:Create(card,TweenInfo.new(.2),{BackgroundColor3=color}); hoverTween:Play()
+        end
+        card.MouseEnter:Connect(function() hover(palette.control) end)
+        card.MouseLeave:Connect(function() hover(palette.panel) end)
+        card.AncestryChanged:Connect(function() if not card.Parent and hoverTween then hoverTween:Cancel() end end)
+        if not settings.motion or settings.lowFx then return end
+        local scale=create("UIScale",card,{Scale=.95})
+        card.BackgroundTransparency=.65
+        local tween=TweenService:Create(scale,TweenInfo.new(.24,Enum.EasingStyle.Quart,Enum.EasingDirection.Out,0,false,((index-1)%9)*.018),{Scale=1})
+        local fade=TweenService:Create(card,TweenInfo.new(.26),{BackgroundTransparency=.12})
+        table.insert(api.tweens,tween); table.insert(api.tweens,fade); tween:Play(); fade:Play()
+    end
+    local shown=false
+    api.step=function(dt)
+        api.clock+=dt; api.elapsed+=dt
+        api.previewElapsed+=dt
+        if api.previewElapsed>=1/30 then
+            api.previewElapsed=0
+            if inspector.Visible and previewCenter and settings.motion and not settings.lowFx then
+                previewCamera.CFrame=CFrame.lookAt(previewCenter+Vector3.new(math.sin(api.clock*.35)*previewRadius*.15,previewRadius*.04,previewRadius),previewCenter)
+            end
+        end
+        logo.Visible=islandBrand.Visible
+        logoRim.Color,divider.BackgroundColor3,titleLine.BackgroundColor3=palette.accent,palette.accent,palette.accent
+        divider.Visible=islandExpanded
+        local target=islandExpanded and 45 or 0
+        islandChevron.Text="+"
+        local rotation=islandChevron.Rotation or 0
+        islandChevron.Rotation=settings.motion and rotation+(target-rotation)*(1-math.exp(-16*dt)) or target
+        if inspector.Visible~=shown then
+            shown=inspector.Visible
+            if shown and settings.motion and not settings.lowFx then
+                inspector.BackgroundTransparency=.4
+                local tween=TweenService:Create(inspector,TweenInfo.new(.26),{BackgroundTransparency=.035}); table.insert(api.tweens,tween); tween:Play()
+            elseif not shown then api.clear() end
+        end
+        if api.elapsed<.25 then return end
+        api.elapsed=0
+        if inspector.Visible then
+            totals.Text=settings._inventoryCounts or ""
+            local proxy=type(inspectTarget)=="table" and inspectTarget
+            mode.Text=proxy and proxy.Container and "CONTAINER / LIVE" or proxy and proxy.Corpse and "CORPSE / LOOT" or "LIVE LOADOUT"
+            mode.TextColor3=palette.accent
+            empty.Text=proxy and proxy.Container and "Содержимое доступно справа во вкладке Loot" or not previewCenter and "3D-модель недоступна\nПредметы показаны справа" or ""
+        end
+        if island.Visible and islandExpanded then
+            local bound,friends=0,0
+            for _ in pairs(bindings) do bound+=1 end
+            for _ in pairs(friendNames) do friends+=1 end
+            values[1].Text=raid.kills~=nil and tostring(raid.kills) or "—"
+            values[2].Text,values[3].Text=tostring(bound),tostring(friends)
+        end
+    end
+    table.insert(cleanups,function() api.clear() end)
+    return api
+end
+controlRows.hudMotion=initializeHudMotion()
+end
+
+controlRows.hudTiming={inventory=1,hud=1}
 local function updateHud(dt)
-    inventoryElapsed += dt
-    hudElapsed += dt
+    controlRows.inventoryArt.step(dt)
+    controlRows.hudMotion.step(dt)
+    controlRows.hudTiming.inventory += dt
+    controlRows.hudTiming.hud += dt
     local camera = workspace.CurrentCamera
     if camera then
         local viewport = camera.ViewportSize
@@ -2358,10 +2563,10 @@ local function updateHud(dt)
     end
     island.Visible = settings.island
     local desiredSize = islandExpanded and UDim2.fromOffset(420, 300) or UDim2.fromOffset(settings._musicIslandWidth or 420, 48)
-    island.Size = island.Size:Lerp(desiredSize, 1 - math.exp(-14 * dt))
+    island.Size = settings.motion and island.Size:Lerp(desiredSize, 1 - math.exp(-14 * dt)) or desiredSize
     islandScroll.Visible = islandExpanded
-    if hudElapsed >= 0.2 then
-    hudElapsed = 0
+    if controlRows.hudTiming.hud >= 0.2 then
+    controlRows.hudTiming.hud = 0
     local sections = {}
     if settings._subscriptionSummary then table.insert(sections, settings._subscriptionSummary) end
     if settings._musicStatus and settings._musicStatus.playing then table.insert(sections, "Music: " .. settings._musicStatus.title:sub(1, 42)) end
@@ -2375,8 +2580,8 @@ local function updateHud(dt)
     updateIslandRows()
     end
 
-    if inspector.Visible and inventoryElapsed >= 0.5 then
-        inventoryElapsed = 0
+    if inspector.Visible and controlRows.hudTiming.inventory >= 0.5 then
+        controlRows.hudTiming.inventory = 0
         updateInventoryCards()
 
     end
