@@ -183,10 +183,12 @@ local function validateConfig(data)
         savedBindings.zoom = savedBindings.zoomHold or savedBindings.zoom
     end
     local validatedFriends = {}
+    local friendCount=0
     if type(data.friends) == "table" then
         for name, enabled in pairs(data.friends) do
             if type(name) == "string" and enabled == true and #name >= 3 and #name <= 20 and name:match("^[%w_]+$") then
-                validatedFriends[string.lower(name)] = true
+                local canonical=string.lower(name)
+                if not validatedFriends[canonical] and friendCount<200 then validatedFriends[canonical]=true; friendCount+=1 end
             end
         end
     end
@@ -223,7 +225,9 @@ if canSave then
         local newest
         for _, slot in ipairs({ "a", "b" }) do
             local ok, data = pcall(function()
-                return validateConfig(HttpService:JSONDecode(readfile(prefix .. slot .. ".json")))
+                local raw=readfile(prefix .. slot .. ".json")
+                if type(raw)~="string" or #raw>262144 then return nil end
+                return validateConfig(HttpService:JSONDecode(raw))
             end)
             if ok and data and (not newest or data.revision > newest.revision) then newest = data end
         end
@@ -666,6 +670,7 @@ local resetButton = button(actionsRow, "Reset", UDim2.fromOffset(180, 12), UDim2
 local unloadButton = button(actionsRow, "Unload", UDim2.fromOffset(348, 12), UDim2.fromOffset(155, 32))
 connect(saveButton.Activated, function() changed(); task.spawn(saveConfig) end)
 connect(resetButton.Activated, function()
+    if not controlRows.release.confirmReset() then return end
     local library, session = settings._musicLibrary, settings._subscription
     settings = table.clone(defaults)
     settings._subscription = session
@@ -1421,7 +1426,7 @@ local function initializeFriends()
         configStatus=message; toast.Text=message; toast.Visible=true; messageAge=0
     end
     local function clearEffect()
-        if effect then effect.shine:Destroy(); effect.jewel:Destroy(); effect=nil end
+        if effect then effect.shine:Destroy(); effect.jewel:Destroy(); if effect.model then effect.model:Destroy() end; effect=nil end
     end
     local function findPlayer(name)
         for _,other in ipairs(Players:GetPlayers()) do if string.lower(other.Name)==name then return other end end
@@ -1431,12 +1436,23 @@ local function initializeFriends()
         if not other or not other.Character then return end
         local head=other.Character:FindFirstChild("Head")
         if not head then return end
-        local shine=create("Highlight",gui,{Adornee=other.Character,FillColor=Color3.fromRGB(150,235,220),OutlineColor=Color3.fromRGB(225,255,245),FillTransparency=.58,OutlineTransparency=.15})
-        local jewel=create("BillboardGui",gui,{Adornee=head,Size=UDim2.fromOffset(54,54),StudsOffsetWorldSpace=Vector3.new(0,2.6,0),AlwaysOnTop=true})
-        local diamond=create("Frame",jewel,{AnchorPoint=Vector2.new(.5,.5),Position=UDim2.fromScale(.5,.5),Size=UDim2.fromOffset(15,15),Rotation=45,BackgroundColor3=Color3.fromRGB(180,250,228),BorderSizePixel=0})
-        rounded(diamond,3)
-        effect,age={shine=shine,jewel=jewel,diamond=diamond},0
+        local shine=create("Highlight",gui,{Adornee=other.Character,FillColor=Color3.fromRGB(125,235,200),OutlineColor=Color3.fromRGB(220,255,242),FillTransparency=.78,OutlineTransparency=.18})
+        local jewel=create("BillboardGui",gui,{Adornee=head,Size=UDim2.fromOffset(210,54),StudsOffsetWorldSpace=Vector3.new(0,3.5,0),AlwaysOnTop=false})
+        local badge=create("Frame",jewel,{AnchorPoint=Vector2.new(.5,.5),Position=UDim2.fromScale(.5,.5),Size=UDim2.fromOffset(200,45),BackgroundColor3=Color3.fromRGB(9,23,27),BackgroundTransparency=.12,BorderSizePixel=0})
+        rounded(badge,14); local rim=stroke(badge,Color3.fromRGB(143,240,205)); rim.Transparency=.3
+        local name=text(badge,"@"..other.Name,{Position=UDim2.fromOffset(12,5),Size=UDim2.new(1,-24,0,18),TextSize=13,TextColor3=Color3.fromRGB(235,255,247)})
+        local caption=text(badge,"TEAMMATE LINKED",{Position=UDim2.fromOffset(12,24),Size=UDim2.new(1,-24,0,13),TextSize=9,TextColor3=Color3.fromRGB(143,240,205)})
+        local model=create("Model",workspace,{Name="OktanSquadLink"})
+        local facets,orbs={},{}
+        for index=1,8 do
+            facets[index]=create("WedgePart",model,{Name="JewelFacet",Anchored=true,CanCollide=false,CanTouch=false,CanQuery=false,CastShadow=false,Material=Enum.Material.Neon,Color=index%2==0 and Color3.fromRGB(133,239,209) or Color3.fromRGB(218,255,246),Transparency=.12,Size=Vector3.new(.38,.5,.38)})
+        end
+        for index=1,8 do
+            orbs[index]=create("Part",model,{Shape=Enum.PartType.Ball,Anchored=true,CanCollide=false,CanTouch=false,CanQuery=false,CastShadow=false,Material=Enum.Material.Neon,Color=Color3.fromRGB(176,255,225),Size=Vector3.new(.055,.055,.055),Transparency=.12})
+        end
+        effect,age={shine=shine,jewel=jewel,model=model,facets=facets,orbs=orbs,head=head,badge=badge,rim=rim,name=name,caption=caption},0
     end
+
     api.add=function(raw)
         local name=type(raw)=="string" and string.lower(raw:match("^%s*(.-)%s*$")) or ""
         if #name<3 or #name>20 or not name:match("^[%w_]+$") then notify("Нужен username: 3–20 букв, цифр или _"); return false end
@@ -1483,13 +1499,30 @@ local function initializeFriends()
         if toast.Visible then messageAge+=dt; if messageAge>3 then toast.Visible=false end end
         if effect then
             age+=dt
-            if age>=2 or not effect.shine.Parent then clearEffect()
+            if age>=2.8 or not effect.shine.Parent or not effect.head.Parent then clearEffect()
             else
-                local fade=age/2
-                effect.shine.FillTransparency=.58+.42*fade
-                effect.shine.OutlineTransparency=.15+.85*fade
-                effect.diamond.BackgroundTransparency=fade
-                effect.diamond.Rotation=45+math.sin(age*3)*12
+                local fade=math.clamp((age-1.45)/1.35,0,1)
+                local entrance=math.min(1,age*5)
+                local animated=settings.motion and not settings.lowFx
+                effect.shine.FillTransparency=.78+.22*fade
+                effect.shine.OutlineTransparency=.18+.82*fade
+                effect.badge.BackgroundTransparency=.12+.88*fade
+                effect.rim.Transparency=.3+.7*fade
+                effect.name.TextTransparency=fade; effect.caption.TextTransparency=fade
+                local base=effect.head.CFrame*CFrame.new(0,2.1+(animated and age*.16 or 0),0)*CFrame.Angles(0,animated and age*1.8 or 0,0)
+                for index,part in ipairs(effect.facets) do
+                    local upper=index<=4
+                    local angle=((index-1)%4)*math.pi/2
+                    part.CFrame=base*CFrame.Angles(0,angle,0)*CFrame.new(0,upper and .16 or -.16,.14)*CFrame.Angles(upper and 0 or math.pi,0,0)
+                    part.Size=Vector3.new(.38,.5,.38)*math.max(.08,entrance*(1-fade*.3))
+                    part.Transparency=.12+.88*fade
+                end
+                for index,orb in ipairs(effect.orbs) do
+                    local angle=index*math.pi/4+(animated and age*1.3 or 0)
+                    local radius=.6+fade*.7
+                    orb.CFrame=base*CFrame.new(math.cos(angle)*radius,math.sin(angle*2)*.12,math.sin(angle)*radius)
+                    orb.Transparency=.12+.88*fade
+                end
             end
         end
         if api.uiStep then api.uiStep(dt) end
@@ -1641,18 +1674,21 @@ connect(Input.InputBegan, function(input, processed)
     end
     if capture then
         if name == "Escape" then capture = nil; refreshAll(); return end
+        local movedFrom
         if name == "Backspace" then
             bindings[capture] = nil
         elseif allowedKeys[name] then
             for action, key in pairs(bindings) do
-                if key == name then bindings[action] = nil end
+                if key == name then movedFrom=action; bindings[action] = nil end
             end
             bindings[capture] = name
         else
             return
         end
+        local assignedAction=capture
         capture = nil
         changed()
+        if movedFrom and movedFrom~=assignedAction then configStatus="Бинд "..name..": "..movedFrom.." → "..assignedAction end
         refreshAll()
         return
     end
@@ -2575,6 +2611,7 @@ controlRows.hudTiming={inventory=1,hud=1}
 local function updateHud(dt)
     controlRows.inventoryArt.step(dt)
     controlRows.hudMotion.step(dt)
+    controlRows.release.step(dt)
     controlRows.hudTiming.inventory += dt
     controlRows.hudTiming.hud += dt
     local camera = workspace.CurrentCamera
@@ -3161,9 +3198,10 @@ renderGraph = function()
         gconnect(control.MouseLeave, function() tooltip.Visible = false end)
     end
     if selectedCategory == "Настройки" and selectedGroup == "Клиент" then
-        node("Save / Reset / Unload", 588, 14 + #leaves * 40, 258, false, function()
+        node("Client / Quick Start", 588, 14 + #leaves * 40, 258, false, function()
             openDetail("Client")
             moveDetail(actionsRow, 1)
+            moveDetail(controlRows.release.form,2)
         end)
     end
     graph.CanvasSize = UDim2.fromOffset(870, math.max(465, #leaves * 40 + 100, #groups * 88 + 40))
@@ -3204,6 +3242,84 @@ local function applyTheme()
     controlRows.studio.theme(accent)
     for _, fill in ipairs(sliderFills) do fill.BackgroundColor3 = accent end
     refreshAll()
+end
+
+do
+local function initializeReleaseCenter()
+    local api={elapsed=1}
+    local form=create("Frame",pages["Настройки"],{Name="ReleaseCenter",Size=UDim2.new(1,-12,0,410),BackgroundTransparency=1,Visible=true})
+    api.form=form
+    text(form,"QUICK START",{Position=UDim2.fromOffset(12,6),Size=UDim2.new(1,-24,0,24),TextSize=12,TextColor3=palette.accent,TextXAlignment=Enum.TextXAlignment.Left})
+    local storage=text(form,"",{Position=UDim2.fromOffset(12,34),Size=UDim2.new(1,-24,0,36),TextSize=12,TextWrapped=true,TextColor3=palette.muted,TextXAlignment=Enum.TextXAlignment.Left})
+    text(form,"INTERFACE PROFILES",{Position=UDim2.fromOffset(12,80),Size=UDim2.new(1,-24,0,20),TextSize=10,TextColor3=palette.muted,TextXAlignment=Enum.TextXAlignment.Left})
+    local hint=text(form,"",{Position=UDim2.fromOffset(12,148),Size=UDim2.new(1,-24,0,32),TextSize=11,TextWrapped=true,TextColor3=palette.muted,TextXAlignment=Enum.TextXAlignment.Left})
+    local undo=button(form,"Undo Profile",UDim2.new(1,-152,0,78),UDim2.fromOffset(140,26)); undo.Visible=false
+    local profiles={
+        {name="Light",description="Меньше декора и обновлений. Подходит для слабых ПК.",values={lowFx=true,skinTextures=false,bubbles=false,snow=false,snowDrifts=false,friendHats=false,motion=false,espFps=20,adaptiveEsp=true}},
+        {name="Balanced",description="Плавное меню и умеренная частота обновления ESP.",values={lowFx=false,skinTextures=false,bubbles=true,snow=true,snowDrifts=false,friendHats=true,motion=true,espFps=30,adaptiveEsp=true}},
+        {name="Studio",description="Полное оформление и 45 Hz ESP. Выше нагрузка на ПК.",values={lowFx=false,skinTextures=true,bubbles=true,snow=true,snowDrifts=true,friendHats=true,motion=true,espFps=45,adaptiveEsp=true}},
+    }
+    api.apply=function(index)
+        local preset=profiles[index]; if not preset then return false end
+        api.previous={}
+        for key,value in pairs(preset.values) do api.previous[key]=settings[key]; settings[key]=value end
+        api.resetUntil=nil; resetButton.Text="Reset"
+        changed(); refreshAll()
+        hint.Text=preset.name.." · "..preset.description
+        undo.Visible=true
+        return true
+    end
+    api.undo=function()
+        if not api.previous then return false end
+        for key,value in pairs(api.previous) do settings[key]=value end
+        api.previous=nil; undo.Visible=false
+        changed(); refreshAll(); hint.Text="Предыдущие настройки оформления восстановлены."
+        return true
+    end
+    for index,preset in ipairs(profiles) do
+        local control=button(form,preset.name,UDim2.new((index-1)/3,12-(index-1)*4,0,108),UDim2.new(1/3,-16,0,34))
+        describe(control,preset.description.." Наведение, бинды, друзья и параметры оружия не меняются.")
+        connect(control.Activated,function() api.apply(index) end)
+    end
+    connect(undo.Activated,api.undo)
+    local guides={}
+    for index,label in ipairs({"Menu & Search","Bind any function","Inspect & Teammates","Music"}) do
+        local tile=create("Frame",form,{Position=UDim2.fromOffset(12,190+(index-1)*51),Size=UDim2.new(1,-24,0,45),BackgroundColor3=palette.panel,BackgroundTransparency=.18,BorderSizePixel=0})
+        rounded(tile,11); stroke(tile,palette.accent).Transparency=.87
+        text(tile,label,{Position=UDim2.fromOffset(12,5),Size=UDim2.new(1,-24,0,15),TextSize=11,TextColor3=palette.accent,TextXAlignment=Enum.TextXAlignment.Left})
+        guides[index]=text(tile,"",{Position=UDim2.fromOffset(12,22),Size=UDim2.new(1,-24,0,18),TextSize=10,TextColor3=palette.muted,TextXAlignment=Enum.TextXAlignment.Left})
+    end
+    api.confirmReset=function()
+        local now=os.clock()
+        if not api.resetUntil or now>api.resetUntil then
+            api.resetUntil=now+5; resetButton.Text="Confirm Reset"
+            configStatus="Сбросить настройки и бинды? Нажми Confirm Reset в течение 5 секунд."
+            return false
+        end
+        api.resetUntil=nil; api.previous=nil; undo.Visible=false; resetButton.Text="Reset"
+        return true
+    end
+    api.step=function(dt)
+        if api.resetUntil and os.clock()>api.resetUntil then api.resetUntil=nil; resetButton.Text="Reset" end
+        api.elapsed+=dt; if api.elapsed<.5 then return end; api.elapsed=0
+        local parent=form
+        while parent and parent~=gui do if parent.Visible==false then return end; parent=parent.Parent end
+        if not menu.Visible then return end
+        storage.Text=(canSave and "Autosave · общий конфиг метро и рейда" or "Session only · исполнитель не поддерживает сохранение").."\n"..configStatus
+        guides[1].Text="Меню: "..(bindings.menu or "кнопка OKTAN").." · поиск: Ctrl+F · настройки сохраняются автоматически."
+        guides[2].Text="Нажми и отпусти СКМ на функции → новая клавиша. Esc — отмена, Backspace — убрать."
+        guides[3].Text="Inspect: "..(bindings.inspect or "не назначен").." · Quick Add: "..(bindings.friendPick or "назначь Pick Friend").." · наведи курсор на цель."
+        guides[4].Text="Яндекс Музыка управляется локальным модулем на твоём ПК. Подключение — Settings → Music."
+    end
+    connect(Input.InputBegan,function(input)
+        if menu.Visible and not bindDialog.Visible and not capture and not pendingNumeric and not Input:GetFocusedTextBox()
+            and input.KeyCode==Enum.KeyCode.F and (Input:IsKeyDown(Enum.KeyCode.LeftControl) or Input:IsKeyDown(Enum.KeyCode.RightControl)) then
+            search:CaptureFocus()
+        end
+    end)
+    return api
+end
+controlRows.release=initializeReleaseCenter()
 end
 
 local overrides = {}
@@ -3892,6 +4008,7 @@ local function initializeWinter()
         table.insert(separators, divider)
     end
     local bubbles, flakes, drifts, hats = {}, {}, {}, {}
+    local hatElapsed=0
     -- Procedural glass: soft halos, a Fresnel rim and a small specular reflection.
     -- Four fixed hosts; animation only changes transforms, never creates instances.
     local orbStyle = {
@@ -4036,27 +4153,29 @@ local function initializeWinter()
         if scanElapsed >= 0.5 then
             scanElapsed = 0
             local seen = {}
-            if settings.friendHats and next(friendNames) ~= nil then
+            local hatCount=0
+            if settings.friendHats and not settings.lowFx and next(friendNames) ~= nil then
                 for _, other in ipairs(Players:GetPlayers()) do
                     local character = isFriend(other) and other.Character
                     local head = character and character:FindFirstChild("Head")
-                    if isFriend(other) and head and head:IsA("BasePart") then
+                    local camera=workspace.CurrentCamera
+                    if isFriend(other) and head and head:IsA("BasePart") and camera and (head.Position-camera.CFrame.Position).Magnitude<=150 and hatCount<12 then
+                        hatCount+=1
                         seen[other] = true
                         if not hats[other] or hats[other].head ~= head then
                             if hats[other] then removeHat(hats[other]) end
                             local model = create("Model", hatFolder)
                             local parts = {}
-                            for index = 1, 5 do
+                            for index = 1, 18 do
                                 parts[index] = create("Part", model, {
-                                    Shape = index == 1 and Enum.PartType.Cylinder or Enum.PartType.Ball, Anchored = true,
+                                    Shape = index == 18 and Enum.PartType.Ball or Enum.PartType.Cylinder, Anchored = true,
                                     CanCollide = false, CanTouch = false, CanQuery = false,
                                     CastShadow = false, Material = Enum.Material.SmoothPlastic,
-                                    Color = (index == 1 or index == 5) and Color3.fromRGB(245, 245, 250) or Color3.fromRGB(195, 45, 66),
+                                    Color = (index == 1 or index == 18) and Color3.fromRGB(245, 245, 250) or Color3.fromRGB(195, 45, 66),
                                     Size = Vector3.new(1, 1, 1),
                                 })
                             end
-                            create("SpecialMesh", parts[2], { MeshType = Enum.MeshType.FileMesh, MeshId = "rbxasset://fonts/cone.mesh" })
-                            parts[3].Transparency, parts[4].Transparency = 1, 1
+                            for _,part in ipairs(parts) do part.Transparency=0; part.LocalTransparencyModifier=0 end
                             local tag = create("BillboardGui", gui, {
                                 Adornee = head, Size = UDim2.fromOffset(160, 22),
                                 StudsOffsetWorldSpace = Vector3.new(0, 2.4, 0), AlwaysOnTop = false,
@@ -4074,20 +4193,25 @@ local function initializeWinter()
                 if not seen[other] then removeHat(entry); hats[other] = nil end
             end
         end
-        for _, entry in pairs(hats) do
+        hatElapsed+=dt
+        if hatElapsed<1/30 then return end
+        hatElapsed=0
+        for _,entry in pairs(hats) do
             if entry.head:IsDescendantOf(workspace) then
-                local head = entry.head
-                entry.tag.Enabled = not settings.esp
-                for index, part in ipairs(entry.parts) do
-                    if index == 1 then
-                        part.Size = Vector3.new(0.24, head.Size.Z * 1.35, head.Size.X * 1.35)
-                        part.CFrame = head.CFrame * CFrame.new(0, head.Size.Y / 2 + 0.12, 0) * CFrame.Angles(0, 0, math.pi / 2)
-                    elseif index == 2 then
-                        part.Size = Vector3.new(head.Size.X * 1.2, 1.15, head.Size.Z * 1.2)
-                        part.CFrame = head.CFrame * CFrame.new(0.1, head.Size.Y / 2 + 0.7, 0) * CFrame.Angles(0, 0, -0.15)
-                    elseif index == 5 then
-                        part.Size = Vector3.new(0.32, 0.32, 0.32)
-                        part.CFrame = head.CFrame * CFrame.new(0.2, head.Size.Y / 2 + 1.3, 0)
+                local head=entry.head
+                entry.tag.Enabled=not settings.esp
+                for index,part in ipairs(entry.parts) do
+                    if index==1 then
+                        part.Size=Vector3.new(.22,head.Size.Z*1.42,head.Size.X*1.42)
+                        part.CFrame=head.CFrame*CFrame.new(0,head.Size.Y/2+.15,0)*CFrame.Angles(0,0,math.pi/2)
+                    elseif index==18 then
+                        part.Size=Vector3.new(.3,.3,.3)
+                        part.CFrame=head.CFrame*CFrame.new(.32,head.Size.Y/2+1.34,0)
+                    else
+                        local t=(index-2)/15
+                        local taper=1.28*(1-t)+.06
+                        part.Size=Vector3.new(.085,head.Size.Z*taper,head.Size.X*taper)
+                        part.CFrame=head.CFrame*CFrame.new(t*t*.32,head.Size.Y/2+.28+t,0)*CFrame.Angles(0,0,math.pi/2)
                     end
                 end
             end
