@@ -2301,7 +2301,7 @@ local function wire(a, b)
 end
 local function node(label, x, y, width, selected, callback)
     local object = button(graph, label, UDim2.fromOffset(x, y), UDim2.fromOffset(width, 30))
-    object.BackgroundTransparency = selected and 0 or 0.08
+    object.BackgroundTransparency = selected and 0.12 or 0.3
     object.TextColor3 = selected and palette.accent or palette.text
     object.TextSize = 13
     object.ZIndex = 3
@@ -2309,7 +2309,7 @@ local function node(label, x, y, width, selected, callback)
     object:FindFirstChildOfClass("UICorner").CornerRadius = UDim.new(0, 10)
     create("UIGradient", object, {
         Rotation = 90,
-        Color = ColorSequence.new(Color3.fromRGB(255, 255, 255), Color3.fromRGB(195, 205, 225)),
+        Color = ColorSequence.new(Color3.fromRGB(235, 241, 250), Color3.fromRGB(135, 151, 176)),
     })
     object.TextXAlignment = Enum.TextXAlignment.Left
     create("UIPadding", object, { PaddingLeft = UDim.new(0, 24), PaddingRight = UDim.new(0, 10) })
@@ -2320,7 +2320,7 @@ local function node(label, x, y, width, selected, callback)
         BorderSizePixel = 0,
     })
     rounded(indicator, 3)
-    if selected and settings.motion then
+    if selected and settings.motion and not settings.lowFx then
         local gradient = object:FindFirstChildOfClass("UIGradient")
         gradient.Offset = Vector2.new(-0.25, 0)
         local shimmer = TweenService:Create(gradient, TweenInfo.new(2.4, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true), { Offset = Vector2.new(0.25, 0) })
@@ -2336,7 +2336,7 @@ local function node(label, x, y, width, selected, callback)
     gconnect(object.MouseEnter, function()
         if hoverTween then hoverTween:Cancel() end
         hoverTween = TweenService:Create(object, TweenInfo.new(0.14), {
-            BackgroundColor3 = Color3.fromRGB(42, 49, 64), TextColor3 = Color3.fromRGB(255, 255, 255),
+            BackgroundColor3 = Color3.fromRGB(34, 41, 54), TextColor3 = Color3.fromRGB(255, 255, 255),
         })
         hoverTween:Play()
     end)
@@ -3127,25 +3127,58 @@ local function initializeWinter()
         ClipsDescendants = true, ZIndex = 0,
     })
     rounded(decoration, 22)
-    local bubbles, flakes, drifts, hats = {}, {}, {}, {}
-    for index = 1, 5 do
-        local bubble = create("Frame", decoration, {
-            BackgroundColor3 = palette.accent, BackgroundTransparency = 0.95,
-            BorderSizePixel = 0, Size = UDim2.fromOffset(120 + index * 24, 120 + index * 24),
-        })
-        rounded(bubble, 1000)
-        local border = stroke(bubble, palette.accent)
-        border.Name = "DecorationStroke"
-        border.Transparency = 0.97
-        create("UIGradient", bubble, {
-            Rotation = index * 43,
-            Transparency = NumberSequence.new({
-                NumberSequenceKeypoint.new(0, 0.2), NumberSequenceKeypoint.new(0.5, 0.7),
-                NumberSequenceKeypoint.new(1, 0.95),
-            }),
-        })
-        table.insert(bubbles, bubble)
+    local separators = {}
+    for _, y in ipairs({ 77, 565 }) do
+        local divider = create("Frame", menu, { Position = UDim2.fromOffset(28, y), Size = UDim2.fromOffset(864, 1), BackgroundColor3 = palette.accent, BackgroundTransparency = 0.9, BorderSizePixel = 0 })
+        create("UIGradient", divider, { Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(0.2, 0.3), NumberSequenceKeypoint.new(0.8, 0.3), NumberSequenceKeypoint.new(1, 1) }) })
+        table.insert(separators, divider)
     end
+    local bubbles, flakes, drifts, hats = {}, {}, {}, {}
+    -- Procedural glass: soft halos, a Fresnel rim and a small specular reflection.
+    -- Four fixed hosts; animation only changes transforms, never creates instances.
+    local orbStyle = {
+        { x = 0.11, y = 0.23, size = 154, phase = 0.3 },
+        { x = 0.88, y = 0.38, size = 218, phase = 2.4 },
+        { x = 0.71, y = 0.88, size = 126, phase = 4.7 },
+        { x = 0.28, y = 0.89, size = 88, phase = 6.1 },
+    }
+    for index, style in ipairs(orbStyle) do
+        local host = create("Frame", decoration, { Name = "GlassBubble", AnchorPoint = Vector2.new(0.5, 0.5),
+            Size = UDim2.fromOffset(style.size, style.size), BackgroundTransparency = 1, BorderSizePixel = 0, ZIndex = 0 })
+        local halos = {}
+        for layer = 5, 1, -1 do
+            local halo = create("Frame", host, { Name = "SoftHalo", AnchorPoint = Vector2.new(0.5, 0.5),
+                Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromScale(1 + layer * 0.055, 1 + layer * 0.055),
+                BackgroundColor3 = palette.accent, BackgroundTransparency = 0.988 - (5-layer)*0.001,
+                BorderSizePixel = 0, ZIndex = 0 })
+            rounded(halo, 1000); table.insert(halos, halo)
+        end
+        local body = create("Frame", host, { Name = "GlassBody", Size = UDim2.fromScale(1, 1),
+            BackgroundColor3 = palette.accent, BackgroundTransparency = 0.84, BorderSizePixel = 0, ZIndex = 0 })
+        rounded(body, 1000)
+        local depth = create("UIGradient", body, { Rotation = 125,
+            Color = ColorSequence.new(Color3.fromRGB(185, 208, 235), Color3.fromRGB(12, 17, 27)),
+            Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.45), NumberSequenceKeypoint.new(0.4, 0.9), NumberSequenceKeypoint.new(1, 0.16) }) })
+        local rim = stroke(body, palette.accent); rim.Name = "DecorationStroke"
+        rim.Thickness, rim.Transparency = 1, 0.7
+        local rimLight = create("UIGradient", rim, { Rotation = -40,
+            Color = ColorSequence.new(Color3.fromRGB(255, 255, 255), Color3.fromRGB(100, 140, 185)),
+            Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.1), NumberSequenceKeypoint.new(0.25, 0.82), NumberSequenceKeypoint.new(0.65, 0.98), NumberSequenceKeypoint.new(1, 0.38) }) })
+        local reflection = create("Frame", host, { Name = "SoftReflection", Position = UDim2.fromScale(0.17, 0.13),
+            Size = UDim2.fromScale(0.42, 0.15), Rotation = -28,
+            BackgroundColor3 = Color3.fromRGB(235, 247, 255), BackgroundTransparency = 0.79, BorderSizePixel = 0, ZIndex = 0 })
+        rounded(reflection, 1000)
+        create("UIGradient", reflection, { Rotation = 90,
+            Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.4), NumberSequenceKeypoint.new(0.5, 0.08), NumberSequenceKeypoint.new(1, 1) }) })
+        local glint = create("Frame", host, { Name = "Glint", Position = UDim2.fromScale(0.23, 0.16),
+            Size = UDim2.fromOffset(3, 3), BackgroundColor3 = Color3.fromRGB(240, 249, 255),
+            BackgroundTransparency = 0.3, BorderSizePixel = 0, ZIndex = 0 })
+        rounded(glint, 1000)
+        table.insert(bubbles, { host = host, body = body, rim = rim, halos = halos,
+            depth = depth, rimLight = rimLight, reflection = reflection, style = style,
+            scale = create("UIScale", host, { Scale = 1 }) })
+    end
+
     for index = 1, 18 do
         local flake = create("Frame", decoration, {
             BackgroundTransparency = 1, Size = UDim2.fromOffset(8, 8),
@@ -3159,11 +3192,12 @@ local function initializeWinter()
         end
         table.insert(flakes, flake)
     end
-    for index = 1, 10 do
+    for index = 1, 4 do
         local drift = create("Frame", decoration, {
-            Size = UDim2.fromOffset(140, 55), BackgroundColor3 = Color3.fromRGB(228, 240, 250),
-            BackgroundTransparency = 0.86, BorderSizePixel = 0,
+            Size = UDim2.fromOffset(310, 80), BackgroundColor3 = Color3.fromRGB(228, 240, 250),
+            BackgroundTransparency = 0.94, BorderSizePixel = 0,
         })
+        create("UIGradient", drift, { Rotation = 90, Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.2), NumberSequenceKeypoint.new(1, 1) }) })
         rounded(drift, 100)
         table.insert(drifts, drift)
     end
@@ -3177,32 +3211,55 @@ local function initializeWinter()
         hatFolder:Destroy()
     end)
     local time, scanElapsed = 0, 1
+    local decorElapsed, decorTime, decorAccent, decorVisible = 1, 0, nil, false
+    local decorBubbles, decorSnow, decorDrifts, decorMotion
     return function(dt)
         time += dt
         scanElapsed += dt
         decoration.Visible = menu.Visible and not settings.lowFx
         if decoration.Visible then
-            for index, bubble in ipairs(bubbles) do
-                bubble.Visible = settings.bubbles
+            decorElapsed += dt
+            if settings.motion then decorTime += dt end
+        end
+        local repaint = decoration.Visible and (not decorVisible or palette.accent ~= decorAccent
+            or decorBubbles ~= settings.bubbles or decorSnow ~= settings.snow or decorDrifts ~= settings.snowDrifts or decorMotion ~= settings.motion
+            or (settings.motion and decorElapsed >= 1 / 30))
+        decorVisible = decoration.Visible
+        if repaint then
+            decorElapsed = 0
+            local changedColor = palette.accent ~= decorAccent
+            decorAccent = palette.accent
+            decorBubbles, decorSnow, decorDrifts, decorMotion = settings.bubbles, settings.snow, settings.snowDrifts, settings.motion
+            if changedColor then for _, divider in ipairs(separators) do divider.BackgroundColor3 = palette.accent end end
+            for _, orb in ipairs(bubbles) do
+                orb.host.Visible = settings.bubbles
                 if settings.bubbles then
-                    bubble.Position = UDim2.fromOffset(
-                        360 + math.sin(time * 0.14 + index * 1.7) * 360,
-                        220 + math.cos(time * 0.11 + index) * 210)
-                    bubble.BackgroundColor3 = palette.accent
+                    local style, t = orb.style, decorTime
+                    orb.host.Position = UDim2.fromScale(style.x + math.sin(t * 0.12 + style.phase) * 0.018,
+                        style.y + math.cos(t * 0.1 + style.phase) * 0.026)
+                    orb.scale.Scale = 1 + math.sin(t * 0.22 + style.phase) * 0.018
+                    orb.depth.Rotation = 125 + math.sin(t * 0.08 + style.phase) * 12
+                    orb.rimLight.Rotation = -40 + math.sin(t * 0.1 + style.phase) * 18
+                    if orb.accent ~= palette.accent then
+                        orb.accent = palette.accent
+                        orb.body.BackgroundColor3 = palette.accent
+                        orb.rim.Color = palette.accent:Lerp(Color3.fromRGB(225, 241, 255), 0.55)
+                        for _, halo in ipairs(orb.halos) do halo.BackgroundColor3 = palette.accent end
+                    end
                 end
             end
             for index, flake in ipairs(flakes) do
                 flake.Visible = settings.snow
                 if settings.snow then
-                    flake.Position = UDim2.fromScale((index * 0.137 + math.sin(time * 0.3 + index) * 0.02) % 1,
-                        (index * 0.113 + time * 0.025) % 1)
-                    flake.Rotation = (time * 9 + index * 24) % 360
+                    flake.Position = UDim2.fromScale((index * 0.137 + math.sin(decorTime * 0.3 + index) * 0.02) % 1,
+                        (index * 0.113 + decorTime * 0.025) % 1)
+                    flake.Rotation = (decorTime * 9 + index * 24) % 360
                 end
             end
             for index, drift in ipairs(drifts) do
                 drift.Visible = settings.snowDrifts
                 if settings.snowDrifts then
-                    drift.Position = UDim2.new(0, 28 + (index - 1) * 80, 1, -12 + math.sin(time + index) * 3)
+                    drift.Position = UDim2.new(0, -64 + (index - 1) * 260, 1, -12 + math.sin(decorTime + index) * 3)
                 end
             end
         end
