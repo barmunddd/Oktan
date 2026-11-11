@@ -23,6 +23,10 @@ end
 
 -- Every exposed setting has its own description, bounds and keyboard actions.
 local definitions = {
+    { "adaptiveEsp", true, "Adaptive ESP", "При большом числе целей снижает частоту только ESP: до 30 обновлений/с после 16 целей и до 20 после 32. Игровой FPS не ограничивает; все цели остаются видимыми.", "Настройки" },
+    { "lowFx", false, "Light Menu", "Отключает размытие и фоновые зимние анимации меню. Игровые функции и выбранные цвета не меняет.", "Настройки" },
+    { "perfDebug", false, "Frame Stats", "Измеряет время основного обработчика клиента, ESP и камеры в миллисекундах CPU. Видно внизу меню и в Export Debug; это не замер нагрузки всей игры или GPU.", "Настройки" },
+    { "yandexPlay", false, "Yandex Music", "Управляет приложением Яндекс Музыки на твоём ПК. Connect, Play/Pause, Previous/Next. Поиск открывается в сервисе; нужен локальный модуль. СКМ — бинд Play/Pause.", "Настройки" },
     { "spotifyPlay", false, "Spotify", "Личный Spotify: поиск исполнителей и треков, Play, Pause, Stop. Нужны локальный модуль и подключение аккаунта. СКМ — бинд Play/Pause.", "Настройки" },
     { "musicPlay", false, "Music Player", "Запуск и пауза личного плеера. Слышишь только ты; при входе музыка сама не запускается.", "Настройки" },
     { "musicVolume", 20, "Music Volume", "Громкость только личной музыки. Звуки игры не меняет.", "Настройки", 0, 100 },
@@ -401,7 +405,7 @@ local capture, activeSlider
 local inspectAction
 local function setMenu(visible)
     menu.Visible = visible
-    if visible and settings.motion then
+    if visible and settings.motion and not settings.lowFx then
         menu.GroupTransparency = 0.65
         TweenService:Create(menu, TweenInfo.new(0.24, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), { GroupTransparency = 0 }):Play()
     else menu.GroupTransparency = 0 end
@@ -1166,6 +1170,101 @@ end
 controlRows.spotify = initializeSpotify()
 end
 
+do
+local function initializeYandexMusic()
+    settings.yandexPlay = false
+    local alive, busy, connected, pairing, source, lastFlag = true, false, false, nil, nil, false
+    local elapsed = 0
+    local form = create("Frame", pages["Настройки"], { Name = "YandexMusicPlayer", Size = UDim2.new(1, -20, 0, 320), BackgroundTransparency = 1, Visible = false })
+    text(form, "Яндекс Музыка / приложение на ПК", { Position = UDim2.fromOffset(16, 8), Size = UDim2.new(1, -165, 0, 30), TextSize = 18, TextXAlignment = Enum.TextXAlignment.Left })
+    local connectButton = button(form, "Connect", UDim2.new(1, -135, 0, 8), UDim2.fromOffset(119, 34))
+    local now = text(form, "Подключи запущенное приложение", { Position = UDim2.fromOffset(16, 64), Size = UDim2.new(1, -32, 0, 32), TextSize = 20, TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd })
+    local artist = text(form, "", { Position = UDim2.fromOffset(16, 101), Size = UDim2.new(1, -32, 0, 24), TextColor3 = palette.muted, TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd })
+    local buttons = {}
+    for i, entry in ipairs({ {"previous", "Previous"}, {"play", "Play"}, {"pause", "Pause"}, {"next", "Next"}, {"stop", "Stop"} }) do
+        local item = button(form, entry[2], UDim2.fromOffset(16 + (i-1)*120, 146), UDim2.fromOffset(108, 36))
+        buttons[entry[1]] = item
+    end
+    local query = text(form, "", { Name = "YandexQuery", Position = UDim2.fromOffset(16, 208), Size = UDim2.new(1, -190, 0, 38), BackgroundTransparency = 0.1, BackgroundColor3 = palette.control, PlaceholderText = "Исполнитель, группа или песня…", ClearTextOnFocus = false, TextXAlignment = Enum.TextXAlignment.Left }, "TextBox")
+    rounded(query, 10); create("UIPadding", query, { PaddingLeft = UDim.new(0, 12) })
+    local searchButton = button(form, "Search ↗", UDim2.new(1, -162, 0, 208), UDim2.fromOffset(146, 38))
+    local info = text(form, "Музыка звучит в приложении Яндекса • поиск откроется в сервисе", { Position = UDim2.fromOffset(16, 262), Size = UDim2.new(1, -32, 0, 48), TextWrapped = true, TextColor3 = palette.muted, TextXAlignment = Enum.TextXAlignment.Left })
+    local api = { form = form }
+    local function send(path, data, callback)
+        if not alive or busy then return false end
+        busy = true
+        task.spawn(function()
+            local ok, result = pcall(function()
+                if not pairing then
+                    local loaded, raw = pcall(function() return HttpService:JSONDecode(readfile("Oktan-yandex-bridge.json")) end)
+                    if not loaded or type(raw) ~= "table" or raw.url ~= "http://127.0.0.1:8975" or type(raw.token) ~= "string" or #raw.token < 20 or #raw.token > 100 or not raw.token:match("^[%w_%-]+$") then error("Запусти локальный модуль Яндекс Музыки", 0) end
+                    pairing = raw
+                end
+                local httpRequest = request or http_request or (syn and syn.request)
+                if type(httpRequest) ~= "function" then error("HTTP request недоступен", 0) end
+                data = data or {}; data.client = "Oktan"
+                local response = httpRequest({Url = pairing.url .. path, Method = "POST", Headers = {["Content-Type"]="application/json", ["X-Oktan-Pair"]=pairing.token}, Body = HttpService:JSONEncode(data), Timeout = 12})
+                if type(response) ~= "table" or type(response.Body) ~= "string" then error("Локальный модуль не ответил", 0) end
+                local decoded = HttpService:JSONDecode(response.Body)
+                if response.StatusCode ~= 200 then
+                    if response.StatusCode == 403 then pairing = nil end
+                    error(type(decoded.error)=="string" and decoded.error or "Ошибка локального модуля", 0)
+                end
+                return decoded
+            end)
+            if not alive then return end
+            busy = false
+            if ok then callback(result) else info.Text = tostring(result):sub(1,180) end
+        end)
+        return true
+    end
+    local function status(data)
+        connected, source, lastFlag = true, data.source, data.playing == true
+        settings.yandexPlay = lastFlag
+        now.Text, artist.Text = tostring(data.title or "Яндекс Музыка"), tostring(data.artist or "")
+        buttons.play.TextColor3 = lastFlag and palette.accent or palette.text
+        info.Text = lastFlag and "Играет в приложении на твоём ПК" or "Пауза • управление только Яндекс Музыкой"
+        settings._yandexStatus = { title = data.title, artist = data.artist, playing = lastFlag, localOnly = true }
+    end
+    api.control = function(action)
+        if not connected or not source then info.Text = "Нажми Connect после запуска музыки в приложении"; return false end
+        return send("/control", {action=action, source=source}, function(data)
+            info.Text = tostring(data.message or "Команда выполнена")
+            if action == "play" then lastFlag = true elseif action == "pause" or action == "stop" then lastFlag = false end
+            settings.yandexPlay = lastFlag
+            elapsed = 0 -- Keep the command result visible until the next status update.
+        end)
+    end
+    connect(connectButton.Activated, function() pairing = nil; send("/connect", {}, status) end)
+    for action, item in pairs(buttons) do connect(item.Activated, function() api.control(action) end) end
+    local function searchYandex()
+        local term = query.Text:match("^%s*(.-)%s*$")
+        if term == "" then info.Text = "Введи исполнителя или песню"; return end
+        send("/search", {query=term:sub(1,150)}, function(data)
+            if type(data.url) ~= "string" or data.url:sub(1, 36) ~= "https://music.yandex.ru/search?text=" then info.Text = "Некорректная ссылка поиска"; return end
+            if type(openurl) == "function" then local ok, answer = pcall(openurl,data.url); if ok and answer ~= false then info.Text = "Поиск открыт в Яндекс Музыке"; return end end
+            if type(setclipboard) == "function" then local ok = pcall(setclipboard,data.url); if ok then info.Text = "Ссылка поиска скопирована • открой в браузере"; return end end
+            info.Text = "Открой поиск в приложении Яндекс Музыки"
+        end)
+    end
+    connect(searchButton.Activated, searchYandex)
+    connect(query.FocusLost, function(enter) if enter then searchYandex() end end)
+    api.step = function(dt)
+        if settings.yandexPlay ~= lastFlag then
+            local desired = settings.yandexPlay; settings.yandexPlay = lastFlag
+            api.control(desired and "play" or "pause")
+        end
+        elapsed += dt
+        if connected and menu.Visible and form.Visible and elapsed >= 3 and not busy then
+            elapsed = 0; send("/status", {}, status)
+        end
+    end
+    table.insert(cleanups, function() alive = false; pairing = nil; settings._yandexStatus = nil; form:Destroy() end)
+    return api
+end
+controlRows.yandex = initializeYandexMusic()
+end
+
 local raidReport = button(actionsRow, "Export Debug", UDim2.fromOffset(516, 12), UDim2.fromOffset(184, 32))
 describe(raidReport, "Если Kills показывает прочерк, сохраните структуру рейдовых данных для подключения счётчика.")
 connect(raidReport.Activated, function()
@@ -1189,6 +1288,7 @@ connect(raidReport.Activated, function()
         end
         report.camera = { ads = settings._ads, nativeFov = settings._nativeFov, rawRmb = Input:IsMouseButtonPressed(Enum.UserInputType.MouseButton2), fov = workspace.CurrentCamera and workspace.CurrentCamera.FieldOfView, viewmodel = settings.viewmodel, viewmodelStatus = settings._viewmodelStatus }
         report.cameraTrace = settings._cameraTrace
+        report.performance = settings._performance
         report.subscription = settings._subscriptionInfo
         report.music = settings._musicStatus
         report.weaponTuning = settings._weaponStatus
@@ -1927,9 +2027,9 @@ local treeGroups = {
     ["Мир"] = { "Освещение", "Vegetation", "Visual Studio" },
     ["Камера"] = { "Зум", "Прицел", "Vision", "Viewmodel" },
     ["Бинды"] = { "Инвентарь", "Dynamic Island", "Управление", "Назначения функций" },
-    ["Настройки"] = { "Оформление", "Клиент", "Music" },
+    ["Настройки"] = { "Оформление", "Клиент", "Music", "Performance" },
 }
-local settingGroup = { spotifyPlay = "Music", musicPlay = "Music", musicVolume = "Music", musicRepeat = "Music", musicIndex = "Music", noRecoil = "Weapon Tuning", aimEase = "Область и плавность", aimFilter = "Область и плавность", graphics = "Visual Studio", gfxTier = "Visual Studio", gfxLook = "Visual Studio", echo = "Оформление", echoDelay = "Оформление", echoFreeze = "Оформление", motion = "Оформление", killFx = "Оформление", crossStyle = "Прицел", crossWidth = "Прицел", noLeaves = "Vegetation", noGrass = "Vegetation", corpseEsp = "Loot", itemEsp = "Loot", lootThrough = "Loot", lootRange = "Loot", lootTextSize = "Loot",
+local settingGroup = { adaptiveEsp = "Performance", lowFx = "Performance", perfDebug = "Performance", yandexPlay = "Music", spotifyPlay = "Music", musicPlay = "Music", musicVolume = "Music", musicRepeat = "Music", musicIndex = "Music", noRecoil = "Weapon Tuning", aimEase = "Область и плавность", aimFilter = "Область и плавность", graphics = "Visual Studio", gfxTier = "Visual Studio", gfxLook = "Visual Studio", echo = "Оформление", echoDelay = "Оформление", echoFreeze = "Оформление", motion = "Оформление", killFx = "Оформление", crossStyle = "Прицел", crossWidth = "Прицел", noLeaves = "Vegetation", noGrass = "Vegetation", corpseEsp = "Loot", itemEsp = "Loot", lootThrough = "Loot", lootRange = "Loot", lootTextSize = "Loot",
     noVisor = "Vision", cameraFov = "Vision", cameraFovValue = "Vision",
     viewmodel = "Viewmodel", vmX = "Viewmodel", vmY = "Viewmodel", vmZ = "Viewmodel", sticky = "Наведение", noFog = "Освещение", bubbles = "Оформление", snow = "Оформление", snowDrifts = "Оформление", friendHats = "Оформление", espFps = "Цвет и оформление", adaptiveText = "Подписи",
     aim = "Наведение", aimPlayers = "Цели и проверки", aimDummies = "Цели и проверки",
@@ -2305,7 +2405,7 @@ renderGraph = function()
         if category == selectedCategory then categoryY = 33 + (index - 1) * 52 end
     end
     local groups = treeGroups[selectedCategory] or {}
-    if selectedCategory == "Настройки" then groups = { "Оформление", "Инвентарь", "Dynamic Island", "Клиент", "Music" } end
+    if selectedCategory == "Настройки" then groups = { "Оформление", "Инвентарь", "Dynamic Island", "Клиент", "Music", "Performance" } end
     local selectedY = 90
     for index, group in ipairs(groups) do
         local y = 35 + (index - 1) * 88
@@ -2340,7 +2440,9 @@ renderGraph = function()
             openDetail(definition[3])
             activeDetailEntry = { label = definition[3], key = entry.key }
             detailTitle.Text = definition[3] .. bindingSuffix(entry.key)
-            if entry.key == "spotifyPlay" then
+            if entry.key == "yandexPlay" then
+                moveDetail(controlRows.yandex.form, 1)
+            elseif entry.key == "spotifyPlay" then
                 moveDetail(controlRows.spotify.form, 1)
             elseif entry.key == "musicPlay" then
                 moveDetail(controlRows.music.form, 1)
@@ -2423,7 +2525,7 @@ renderGraph = function()
             moveDetail(actionsRow, 1)
         end)
     end
-    graph.CanvasSize = UDim2.fromOffset(870, math.max(465, #leaves * 40 + 100))
+    graph.CanvasSize = UDim2.fromOffset(870, math.max(465, #leaves * 40 + 100, #groups * 88 + 40))
 end
 connect(back.Activated, function()
     clearDetail()
@@ -2649,7 +2751,7 @@ local function bodyBounds(camera, candidate)
     local maximum = Vector2.new(-math.huge, -math.huge)
     local found = false
     local parts = candidate.bodyParts
-    if not (settings.boxes or settings.corners or settings.healthBar or settings.skeleton) then
+    if not (settings.boxes or settings.corners or settings.healthBar) then
         local headPoint = camera:WorldToViewportPoint(candidate.head.Position + Vector3.new(0, candidate.head.Size.Y * 0.5, 0))
         local feetPoint = camera:WorldToViewportPoint(candidate.root.Position - Vector3.new(0, 3, 0))
         if headPoint.Z <= 0.1 or feetPoint.Z <= 0.1 then return nil end
@@ -2823,12 +2925,15 @@ local function renderScreenMarker(marker, camera, color)
     local enabled = settings.esp and not menu.Visible and camera and candidate and candidate.model:IsDescendantOf(workspace)
         and candidate.root:IsDescendantOf(workspace) and candidate.humanoid.Health > 0
         and (settings.through or not marker.occluded)
+    enabled = enabled and (settings.names or settings.health or settings.distance or settings.weapon
+        or settings.boxes or settings.corners or settings.healthBar or settings.skeleton or settings.tracers)
     screen.container.Visible = enabled == true
     if not enabled then return end
     local model = candidate.model
     if isFriend(candidate.owner) then color = Color3.fromRGB(85, 235, 150) end
     local projected = camera:WorldToViewportPoint(candidate.root.Position)
     local viewport = camera.ViewportSize
+    if projected.Z <= 0.1 then screen.container.Visible = false; return end
     if projected.Z > 10 and (projected.X < -260 or projected.Y < -260
         or projected.X > viewport.X + 260 or projected.Y > viewport.Y + 260) then
         screen.container.Visible = false
@@ -2874,11 +2979,17 @@ local function renderScreenMarker(marker, camera, color)
         if os.clock() - screen.jointsAt > 1 then
             screen.jointsAt = os.clock()
             table.clear(screen.joints)
-            for _, joint in ipairs(model:GetDescendants()) do
+            local function considerJoint(joint)
                 if joint:IsA("Motor6D") and joint.Part0 and joint.Part1
                     and joint.Part0.Parent == model and joint.Part1.Parent == model then
                     table.insert(screen.joints, joint)
                 end
+            end
+            -- R6/R15 body motors live on the rig or its direct body parts.
+            -- Clothing/accessory descendants cannot produce a body-to-body motor.
+            for _, child in ipairs(model:GetChildren()) do
+                considerJoint(child)
+                if child:IsA("BasePart") then for _, joint in ipairs(child:GetChildren()) do considerJoint(joint) end end
             end
         end
         for _, joint in ipairs(screen.joints) do
@@ -2902,6 +3013,8 @@ end
 local function updateMarkers(camera)
     local seen = {}
     if settings.esp and camera then
+        espRay.FilterDescendantsInstances = player.Character and { player.Character, camera } or { camera }
+        local baseColor = Color3.fromHSV(settings.espHue / 360, settings.espSaturation / 100, settings.espValue / 100)
         for _, candidate in ipairs(candidates) do
             local owner = candidate.owner
             if (owner and settings.espPlayers) or (not owner and settings.espDummies) then
@@ -2923,11 +3036,10 @@ local function updateMarkers(camera)
                     end
                     marker.candidate = candidate
                     marker.distance = distance
-                    espRay.FilterDescendantsInstances = player.Character and { player.Character, camera } or { camera }
                     local hit = not settings.through and workspace:Raycast(
                         camera.CFrame.Position, candidate.root.Position - camera.CFrame.Position, espRay)
                     marker.occluded = hit and not hit.Instance:IsDescendantOf(model) or false
-                    local color = Color3.fromHSV(settings.espHue / 360, settings.espSaturation / 100, settings.espValue / 100)
+                    local color = baseColor
                     if isFriend(owner) then color = Color3.fromRGB(85, 235, 150) end
                     marker.highlight.FillColor = color
                     marker.highlight.OutlineColor = color
@@ -3068,8 +3180,8 @@ local function initializeWinter()
     return function(dt)
         time += dt
         scanElapsed += dt
-        decoration.Visible = menu.Visible
-        if menu.Visible then
+        decoration.Visible = menu.Visible and not settings.lowFx
+        if decoration.Visible then
             for index, bubble in ipairs(bubbles) do
                 bubble.Visible = settings.bubbles
                 if settings.bubbles then
@@ -3097,9 +3209,9 @@ local function initializeWinter()
         if scanElapsed >= 0.5 then
             scanElapsed = 0
             local seen = {}
-            if settings.friendHats then
+            if settings.friendHats and next(friendNames) ~= nil then
                 for _, other in ipairs(Players:GetPlayers()) do
-                    local character = other.Character
+                    local character = isFriend(other) and other.Character
                     local head = character and character:FindFirstChild("Head")
                     if isFriend(other) and head and head:IsA("BasePart") then
                         seen[other] = true
@@ -3434,7 +3546,7 @@ local updateVegetation = initializeVegetation()
                 characterConnection = characterLast.DescendantAdded:Connect(remember)
             end
         end
-        if camera ~= cameraLast or scanTime >= 1 then
+        if camera ~= cameraLast or ((settings.viewmodel or settings.noVisor) and scanTime >= 1) then
             scanTime = 0
             if camera ~= cameraLast then
                 for model, entry in pairs(viewmodels) do restoreModel(model, entry) end
@@ -3443,7 +3555,7 @@ local updateVegetation = initializeVegetation()
                 if cameraConnection then cameraConnection:Disconnect() end
                 cameraConnection = camera and camera.DescendantAdded:Connect(function() scanTime = 1 end)
             end
-            if camera then
+            if camera and (settings.viewmodel or settings.noVisor) then
                 for _, object in ipairs(camera:GetDescendants()) do
                     if not tracked[object] then remember(object) end
                     if object:IsA("Model") and modelNames[normalized(object)] then
@@ -3867,7 +3979,10 @@ do
 local function initializeWeaponTuning()
     local entry, elapsed
     elapsed = 1
+    local previousStatus
     local function status(message)
+        if previousStatus == message then return end
+        previousStatus = message
         settings._weaponStatus = { recoil = message, spread = "Waiting for weapon definition data" }
     end
     local function valid(value)
@@ -3950,8 +4065,9 @@ task.spawn(function()
     end
 end)
 
-local renderState = { elapsed = 1, visualElapsed = 1 }
+local renderState = { elapsed = 1, visualElapsed = 1, perfElapsed = 0, perfFrames = 0, perfTotal = 0, perfEsp = 0, perfCamera = 0, perfPeak = 0 }
 RunService:BindToRenderStep(renderName, Enum.RenderPriority.Last.Value + 1, function(dt)
+    local perfStarted = settings.perfDebug and os.clock()
     local camera = workspace.CurrentCamera
     updateHud(dt)
     updateWinter(dt)
@@ -3961,6 +4077,7 @@ RunService:BindToRenderStep(renderName, Enum.RenderPriority.Last.Value + 1, func
     aimContext.weaponTuning.step(dt)
     controlRows.music.step(dt)
     controlRows.spotify.step(dt)
+    controlRows.yandex.step(dt)
     controlRows.subscription.step(dt)
     updateLootESP(dt, camera)
 
@@ -3975,6 +4092,9 @@ RunService:BindToRenderStep(renderName, Enum.RenderPriority.Last.Value + 1, func
         local count = #candidates
         status.Text = capture and "Нажмите клавишу • Esc — отмена • Backspace — убрать назначение"
             or string.format("%s   •   Меню [%s]   •   Целей %d", configStatus, bindings.menu or "OKTAN", count)
+        if settings.perfDebug and settings._performance then
+            status.Text ..= string.format(" • CPU %.2fms • ESP %.2fms / %dHz", settings._performance.meanMs, settings._performance.espMs, settings._performance.espHz)
+        end
     end
 
     menu.BackgroundTransparency = math.min(settings.glass, 12) / 100
@@ -3982,8 +4102,8 @@ RunService:BindToRenderStep(renderName, Enum.RenderPriority.Last.Value + 1, func
         bindDialog.Visible = false
         pendingNumeric = nil
     end
-    blurEffect.Size = menu.Visible and settings.blur or 0
-    blurEffect.Enabled = menu.Visible and settings.blur > 0
+    blurEffect.Size = menu.Visible and not settings.lowFx and settings.blur or 0
+    blurEffect.Enabled = menu.Visible and not settings.lowFx and settings.blur > 0
     if tooltip.Visible then
         local mouse = Input:GetMouseLocation()
         local viewport = camera and camera.ViewportSize or Vector2.new(1280, 720)
@@ -3993,11 +4113,18 @@ RunService:BindToRenderStep(renderName, Enum.RenderPriority.Last.Value + 1, func
     end
     local color = Color3.fromHSV(settings.espHue / 360, settings.espSaturation / 100, settings.espValue / 100)
     renderState.visualElapsed += dt
-    if renderState.visualElapsed >= 1 / settings.espFps then
+    renderState.effectiveEspFps = settings.espFps
+    if settings.adaptiveEsp then
+        if #orderedMarkers > 32 then renderState.effectiveEspFps = math.min(settings.espFps, 20)
+        elseif #orderedMarkers > 16 then renderState.effectiveEspFps = math.min(settings.espFps, 30) end
+    end
+    local espStarted = perfStarted and os.clock()
+    if renderState.visualElapsed >= 1 / renderState.effectiveEspFps then
         renderState.visualElapsed = 0
         table.clear(occupiedLabels)
         for _, marker in ipairs(orderedMarkers) do renderScreenMarker(marker, camera, color) end
     end
+    if espStarted then renderState.perfEsp += os.clock() - espStarted end
     local inputReady = focused and not menu.Visible and not capture and Input:GetFocusedTextBox() == nil
     local records = game:GetService("ReplicatedStorage"):FindFirstChild("Players")
     local record = records and records:FindFirstChild(player.Name)
@@ -4012,7 +4139,9 @@ RunService:BindToRenderStep(renderName, Enum.RenderPriority.Last.Value + 1, func
     end
     settings._ads = aimingFlag(variables) or aimingFlag(player.Character) or aimingFlag(camera) or (weaponPresent and rightMouse) or false
     local zooming = camera and inputReady and settings.zoom and held("zoom")
+    local cameraStarted = perfStarted and os.clock()
     updateCameraVisuals(dt, camera, (not settings._ads) and (zooming and settings.zoomFov or (settings.cameraFov and settings.cameraFovValue or nil)) or nil)
+    if cameraStarted then renderState.perfCamera += os.clock() - cameraStarted end
     enforceOverrides()
     ring.Visible = camera ~= nil and inputReady and settings.aim and settings.ring
     if renderState.shownRingRadius ~= settings.radius then
@@ -4050,5 +4179,23 @@ RunService:BindToRenderStep(renderName, Enum.RenderPriority.Last.Value + 1, func
         aimAt(camera, dt)
     else
         aimContext.locked, aimContext.filter = nil, nil
+    end
+    if perfStarted then
+        local cost = os.clock() - perfStarted
+        renderState.perfFrames += 1; renderState.perfElapsed += dt; renderState.perfTotal += cost
+        renderState.perfPeak = math.max(renderState.perfPeak, cost)
+        if renderState.perfElapsed >= 1 then
+            settings._performance = { scope = "main render callback CPU; excludes GPU/other scripts",
+                meanMs = renderState.perfTotal * 1000 / renderState.perfFrames,
+                espMs = renderState.perfEsp * 1000 / renderState.perfFrames,
+                cameraMs = renderState.perfCamera * 1000 / renderState.perfFrames,
+                peakMs = renderState.perfPeak * 1000, markers = #orderedMarkers, espHz = renderState.effectiveEspFps }
+            renderState.perfFrames, renderState.perfElapsed, renderState.perfTotal = 0, 0, 0
+            renderState.perfEsp, renderState.perfCamera, renderState.perfPeak = 0, 0, 0
+        end
+    elseif settings._performance then
+        settings._performance = nil
+        renderState.perfFrames, renderState.perfElapsed, renderState.perfTotal = 0, 0, 0
+        renderState.perfEsp, renderState.perfCamera, renderState.perfPeak = 0, 0, 0
     end
 end)
