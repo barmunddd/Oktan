@@ -23,6 +23,7 @@ end
 
 -- Every exposed setting has its own description, bounds and keyboard actions.
 local definitions = {
+    { "spotifyPlay", false, "Spotify", "Личный Spotify: поиск исполнителей и треков, Play, Pause, Stop. Нужны локальный модуль и подключение аккаунта. СКМ — бинд Play/Pause.", "Настройки" },
     { "musicPlay", false, "Music Player", "Запуск и пауза личного плеера. Слышишь только ты; при входе музыка сама не запускается.", "Настройки" },
     { "musicVolume", 20, "Music Volume", "Громкость только личной музыки. Звуки игры не меняет.", "Настройки", 0, 100 },
     { "musicRepeat", false, "Repeat Track", "Повторяет текущий трек.", "Настройки" },
@@ -966,13 +967,18 @@ do
 local function initializeSubscriptionPanel()
     local session = settings._subscription
     local elapsed, warned = 1, false
-    local form = create("Frame", pages["Настройки"], { Name = "SubscriptionPanel", Size = UDim2.new(1, -20, 0, 270), BackgroundTransparency = 1, Visible = false })
-    text(form, "SUBSCRIPTION", { Position = UDim2.fromOffset(16, 12), Size = UDim2.fromOffset(600, 30), TextSize = 20, TextXAlignment = Enum.TextXAlignment.Left })
-    local state = text(form, "Проверка состояния...", { Position = UDim2.fromOffset(16, 58), Size = UDim2.new(1, -32, 0, 34), TextXAlignment = Enum.TextXAlignment.Left })
-    local remaining = text(form, "", { Position = UDim2.fromOffset(16, 96), Size = UDim2.new(1, -32, 0, 34), TextSize = 18, TextColor3 = palette.accent, TextXAlignment = Enum.TextXAlignment.Left })
-    local url = text(form, "https://funpay.com/users/15095530/", { Position = UDim2.fromOffset(16, 146), Size = UDim2.fromOffset(600, 32), TextEditable = false, ClearTextOnFocus = false }, "TextBox")
-    local renew = button(form, "Renew / Copy FunPay", UDim2.fromOffset(16, 198), UDim2.fromOffset(240, 40))
-    local result = text(form, "", { Position = UDim2.fromOffset(270, 198), Size = UDim2.new(1, -286, 0, 50), TextWrapped = true, TextColor3 = palette.muted })
+    title.Size = UDim2.fromOffset(106, 32)
+    local badge = button(menu, "Subscription", UDim2.fromOffset(136, 17), UDim2.fromOffset(268, 30))
+    badge.Name, badge.TextSize, badge.TextColor3 = "SubscriptionBadge", 12, palette.accent
+    describe(badge, "Оставшийся срок подписки. Нажми, чтобы посмотреть подробности и продлить доступ.")
+    local form = create("Frame", pages["Настройки"], { Name = "SubscriptionPanel", Size = UDim2.new(1, -20, 0, 290), BackgroundTransparency = 0.25, BackgroundColor3 = palette.panel, Visible = false })
+    rounded(form, 16)
+    text(form, "Твоя подписка", { Position = UDim2.fromOffset(24, 18), Size = UDim2.new(1, -48, 0, 30), TextSize = 21, TextXAlignment = Enum.TextXAlignment.Left })
+    local state = text(form, "Проверка состояния...", { Position = UDim2.fromOffset(24, 58), Size = UDim2.new(1, -48, 0, 26), TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = palette.muted })
+    local remaining = text(form, "", { Position = UDim2.fromOffset(24, 94), Size = UDim2.new(1, -48, 0, 38), TextSize = 24, TextColor3 = palette.accent, TextXAlignment = Enum.TextXAlignment.Left })
+    local renew = button(form, "Renew / Copy FunPay", UDim2.fromOffset(24, 152), UDim2.fromOffset(220, 40))
+    local result = text(form, "Продление у разработчика на FunPay", { Position = UDim2.fromOffset(260, 152), Size = UDim2.new(1, -284, 0, 40), TextWrapped = true, TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = palette.muted })
+    local url = text(form, "https://funpay.com/users/15095530/", { Position = UDim2.fromOffset(24, 212), Size = UDim2.new(1, -48, 0, 34), TextEditable = false, ClearTextOnFocus = false, TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = palette.muted }, "TextBox")
     local warning = text(gui, "", { Name = "OktanExpiryWarning", Position = UDim2.new(0.5, -230, 0, 124), Size = UDim2.fromOffset(460, 32), BackgroundColor3 = palette.background, BackgroundTransparency = 0.12, TextColor3 = Color3.fromRGB(255, 210, 140), Visible = false })
     rounded(warning, 12)
     local function renewNow()
@@ -987,7 +993,7 @@ local function initializeSubscriptionPanel()
         session.unload = function() if unloadSignal.Parent then unloadSignal:Fire() end end
         table.insert(cleanups, function() if type(session.cancel) == "function" then session.cancel() end end)
     end
-    return { form = form, step = function(dt)
+    return { form = form, badge = badge, step = function(dt)
         elapsed += dt
         if elapsed < 0.25 then return end
         elapsed = 0
@@ -995,24 +1001,169 @@ local function initializeSubscriptionPanel()
         if session and type(session.remaining) == "function" then local ok, value = pcall(session.remaining); if ok and type(value) == "number" then seconds = math.max(0, math.floor(value)) end end
         state.Text = not session and "Standalone • серверная сессия не подключена"
             or session.status == "verification_unavailable" and "Сервер временно недоступен • повторная проверка"
-            or "Подписка: " .. tostring(session.status)
+            or session.status == "active" and "Доступ активен • OKTAN"
+            or "Статус: " .. tostring(session.status)
         if seconds then
             local days, hours, minutes = math.floor(seconds / 86400), math.floor(seconds / 3600) % 24, math.floor(seconds / 60) % 60
             remaining.Text = string.format("Осталось: %dд %02d:%02d:%02d", days, hours, minutes, seconds % 60)
+            badge.Text = string.format("ACTIVE  /  %dд %02dч %02dм", days, hours, minutes)
             settings._subscriptionSummary = string.format("Subscription: %dд %02d:%02d:%02d", days, hours, minutes, seconds % 60)
             if seconds <= 600 and not warned then warning.Visible = true; warned = true end
-            warning.Text = "Подписка заканчивается • продление в Settings → Client → Subscription"
+            warning.Text = "Подписка заканчивается • нажми на срок рядом с OKTAN"
             if seconds > 600 then warning.Visible, warned = false, false end
         else
             remaining.Text = session and "Сервер пока не передаёт срок действия" or "Запускай клиент через загрузчик с ключом"
             settings._subscriptionSummary = session and "Subscription: active • expiry unavailable" or nil
+            badge.Text = session and "ACTIVE  /  Subscription" or "Subscription / Standalone"
             warning.Visible = false
         end
         remaining.TextColor3 = palette.accent
+        badge.TextColor3 = palette.accent
         settings._subscriptionInfo = { status = session and session.status or "standalone", expiresAt = session and session.expiresAt, remaining = seconds, canOpenBrowser = session and session.canOpenBrowser or false }
     end }
 end
 controlRows.subscription = initializeSubscriptionPanel()
+end
+
+do
+local function initializeSpotify()
+    settings.spotifyPlay = false
+    local alive, busy, connected, pairing, selectedDevice, lastFlag = true, false, false, nil, nil, false
+    local pollElapsed, cooldown = 0, 0
+    local form = create("Frame", pages["Настройки"], { Name = "SpotifyPlayer", Size = UDim2.new(1, -20, 0, 440), BackgroundTransparency = 1, Visible = false })
+    text(form, "Spotify / личный плеер", { Position = UDim2.fromOffset(12, 4), Size = UDim2.new(1, -24, 0, 30), TextSize = 20, TextXAlignment = Enum.TextXAlignment.Left })
+    local connectButton = button(form, "Connect", UDim2.new(1, -230, 0, 4), UDim2.fromOffset(100, 32))
+    local devicesButton = button(form, "Devices", UDim2.new(1, -120, 0, 4), UDim2.fromOffset(108, 32))
+    local query = text(form, "", { Name = "SpotifyQuery", Position = UDim2.fromOffset(12, 50), Size = UDim2.new(1, -140, 0, 38), BackgroundTransparency = 0.15, BackgroundColor3 = palette.control, PlaceholderText = "Исполнитель, группа или трек…", TextXAlignment = Enum.TextXAlignment.Left, ClearTextOnFocus = false }, "TextBox")
+    rounded(query, 10)
+    create("UIPadding", query, { PaddingLeft = UDim.new(0, 12) })
+    local searchButton = button(form, "Search", UDim2.new(1, -116, 0, 50), UDim2.fromOffset(104, 38))
+    local now = text(form, "Подключи Spotify и выбери свой компьютер", { Position = UDim2.fromOffset(12, 100), Size = UDim2.new(1, -24, 0, 28), TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd })
+    local play = button(form, "Play", UDim2.fromOffset(12, 138), UDim2.fromOffset(110, 34))
+    local pause = button(form, "Pause", UDim2.fromOffset(132, 138), UDim2.fromOffset(110, 34))
+    local stop = button(form, "Stop", UDim2.fromOffset(252, 138), UDim2.fromOffset(110, 34))
+    local info = text(form, "Нужен локальный Spotify Bridge • музыка звучит из Spotify на выбранном ПК", { Position = UDim2.fromOffset(12, 184), Size = UDim2.new(1, -24, 0, 40), TextWrapped = true, TextColor3 = palette.muted, TextXAlignment = Enum.TextXAlignment.Left })
+    local list = create("ScrollingFrame", form, { Position = UDim2.fromOffset(12, 238), Size = UDim2.new(1, -24, 0, 196), BackgroundTransparency = 1, ScrollBarThickness = 3, AutomaticCanvasSize = Enum.AutomaticSize.Y, CanvasSize = UDim2.fromOffset(0, 0) })
+    local api = { form = form }
+    local function loadPairing()
+        if type(readfile) ~= "function" then error("Исполнитель не поддерживает чтение pairing-файла", 0) end
+        local data = HttpService:JSONDecode(readfile("Oktan-spotify-bridge.json"))
+        if type(data) ~= "table" or data.url ~= "http://127.0.0.1:8974" or type(data.token) ~= "string" or #data.token < 20 or #data.token > 100 or not data.token:match("^[%w_%-]+$") then error("Запусти локальный Spotify Bridge заново", 0) end
+        pairing = data
+    end
+    local function send(path, payload, callback)
+        if not alive or busy or cooldown > 0 then return false end
+        busy = true; info.Text = "Spotify • запрос…"
+        task.spawn(function()
+            local ok, result = pcall(function()
+                if not pairing then loadPairing() end
+                local httpRequest = request or http_request or (syn and syn.request)
+                if type(httpRequest) ~= "function" then error("HTTP request недоступен", 0) end
+                local body = payload or {}
+                body.client = "Oktan" -- Force a JSON object even for routes with no parameters.
+                local response = httpRequest({ Url = pairing.url .. path, Method = "POST", Headers = { ["Content-Type"] = "application/json", ["X-Oktan-Pair"] = pairing.token }, Body = HttpService:JSONEncode(body), Timeout = 12 })
+                if type(response) ~= "table" or type(response.Body) ~= "string" then error("Нет ответа от локального Spotify Bridge", 0) end
+                local data = HttpService:JSONDecode(response.Body)
+                if not alive then return nil end
+                if response.StatusCode ~= 200 then
+                    if response.StatusCode == 403 then pairing = nil end
+                    if response.StatusCode == 429 then cooldown = math.clamp(tonumber(data.retry_after) or 30, 1, 3600) end
+                    error(type(data.error) == "string" and data.error or "Ошибка Spotify Bridge", 0)
+                end
+                return data
+            end)
+            if not alive then return end
+            busy = false
+            if ok and result then callback(result)
+            elseif not ok then info.Text = "Не подключено: " .. tostring(result):sub(1, 180) end
+        end)
+        return true
+    end
+    local function resetList()
+        list:ClearAllChildren(); list.CanvasPosition = Vector2.new(0, 0)
+        create("UIListLayout", list, { SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, 6) })
+    end
+    local function openLink(url)
+        if type(openurl) == "function" then local ok, answer = pcall(openurl, url); if ok and answer ~= false then return "Открыто в браузере" end end
+        if type(setclipboard) == "function" then local ok = pcall(setclipboard, url); if ok then return "Ссылка скопирована • открой её в браузере" end end
+        return "Браузер недоступен в исполнителе"
+    end
+    api.control = function(action, uri)
+        if not selectedDevice then info.Text = "Нажми Devices и выбери свой компьютер"; return false end
+        return send("/control", { action = action, uri = uri, device_id = selectedDevice }, function()
+            lastFlag = action == "play"; settings.spotifyPlay = lastFlag
+            info.Text = action == "play" and "Воспроизведение на выбранном ПК" or action == "pause" and "Пауза" or "Остановлено • позиция сброшена"
+            pollElapsed = 10
+        end)
+    end
+    api.search = function()
+        local term = query.Text:match("^%s*(.-)%s*$")
+        if term == "" then info.Text = "Введи исполнителя, группу или название трека"; return end
+        send("/search", { query = term:sub(1, 150) }, function(data)
+            connected = true; resetList()
+            local count = 0
+            for index, track in ipairs(type(data.tracks) == "table" and data.tracks or {}) do
+                if index > 10 then break end
+                if type(track.uri) == "string" and track.uri:match("^spotify:track:%w+$") then
+                    count += 1
+                    local row = create("Frame", list, { Size = UDim2.new(1, -8, 0, 62), BackgroundTransparency = 1, LayoutOrder = index })
+                    local choose = button(row, tostring(track.title) .. "\n" .. tostring(track.artist), UDim2.fromOffset(0, 0), UDim2.new(1, -132, 1, 0))
+                    choose.TextSize, choose.TextXAlignment, choose.TextWrapped = 13, Enum.TextXAlignment.Left, true
+                    create("UIPadding", choose, { PaddingLeft = UDim.new(0, 12), PaddingRight = UDim.new(0, 12) })
+                    choose.Activated:Connect(function() api.control("play", track.uri) end)
+                    local external = button(row, "Spotify ↗", UDim2.new(1, -124, 0, 12), UDim2.fromOffset(120, 36))
+                    external.Activated:Connect(function() info.Text = openLink("https://open.spotify.com/track/" .. track.uri:match("([^:]+)$")) end)
+                end
+            end
+            info.Text = count > 0 and "Выбери трек • воспроизведение в Spotify на твоём ПК" or "Ничего не найдено • попробуй другое название"
+        end)
+    end
+    connect(connectButton.Activated, function()
+        pairing = nil
+        send("/connect", {}, function(data)
+            if type(data.authorize_url) == "string" and data.authorize_url:sub(1, 39) == "https://accounts.spotify.com/authorize?" then info.Text = openLink(data.authorize_url)
+            else info.Text = "Некорректный ответ подключения Spotify" end
+        end)
+    end)
+    connect(devicesButton.Activated, function()
+        send("/devices", {}, function(data)
+            connected = true; resetList()
+            local devices = type(data.devices) == "table" and data.devices or {}
+            for index, device in ipairs(devices) do
+                local choose = button(list, tostring(device.name) .. (device.active and " • Active" or ""), UDim2.new(), UDim2.new(1, -8, 0, 40))
+                choose.LayoutOrder = index
+                choose.Activated:Connect(function() selectedDevice = device.id; info.Text = "Выбран ПК: " .. tostring(device.name) .. " • теперь найди трек" end)
+            end
+            info.Text = #devices > 0 and "Выбери компьютер, на котором слушаешь музыку" or "Открой Spotify на ПК, включи трек и снова нажми Devices"
+        end)
+    end)
+    connect(searchButton.Activated, api.search)
+    connect(query.FocusLost, function(enter) if enter then api.search() end end)
+    connect(play.Activated, function() api.control("play") end)
+    connect(pause.Activated, function() api.control("pause") end)
+    connect(stop.Activated, function() api.control("stop") end)
+    api.step = function(dt)
+        cooldown = math.max(0, cooldown - dt)
+        if settings.spotifyPlay ~= lastFlag then
+            local desired = settings.spotifyPlay; settings.spotifyPlay = lastFlag
+            api.control(desired and "play" or "pause")
+        end
+        pollElapsed += dt
+        if connected and menu.Visible and form.Visible and pollElapsed >= 10 and not busy and cooldown == 0 then
+            pollElapsed = 0
+            send("/status", {}, function(data)
+                local track = data.track
+                now.Text = type(track) == "table" and tostring(track.title) .. " / " .. tostring(track.artist) or "Spotify • нет текущего трека"
+                lastFlag = data.playing == true; settings.spotifyPlay = lastFlag
+                play.TextColor3 = lastFlag and palette.accent or palette.text
+                info.Text = (lastFlag and "Играет" or "Пауза") .. " • " .. tostring(data.device or "Выбери ПК")
+            end)
+        end
+    end
+    table.insert(cleanups, function() alive = false; pairing = nil; form:Destroy() end)
+    return api
+end
+controlRows.spotify = initializeSpotify()
 end
 
 local raidReport = button(actionsRow, "Export Debug", UDim2.fromOffset(516, 12), UDim2.fromOffset(184, 32))
@@ -1778,7 +1929,7 @@ local treeGroups = {
     ["Бинды"] = { "Инвентарь", "Dynamic Island", "Управление", "Назначения функций" },
     ["Настройки"] = { "Оформление", "Клиент", "Music" },
 }
-local settingGroup = { musicPlay = "Music", musicVolume = "Music", musicRepeat = "Music", musicIndex = "Music", noRecoil = "Weapon Tuning", aimEase = "Область и плавность", aimFilter = "Область и плавность", graphics = "Visual Studio", gfxTier = "Visual Studio", gfxLook = "Visual Studio", echo = "Оформление", echoDelay = "Оформление", echoFreeze = "Оформление", motion = "Оформление", killFx = "Оформление", crossStyle = "Прицел", crossWidth = "Прицел", noLeaves = "Vegetation", noGrass = "Vegetation", corpseEsp = "Loot", itemEsp = "Loot", lootThrough = "Loot", lootRange = "Loot", lootTextSize = "Loot",
+local settingGroup = { spotifyPlay = "Music", musicPlay = "Music", musicVolume = "Music", musicRepeat = "Music", musicIndex = "Music", noRecoil = "Weapon Tuning", aimEase = "Область и плавность", aimFilter = "Область и плавность", graphics = "Visual Studio", gfxTier = "Visual Studio", gfxLook = "Visual Studio", echo = "Оформление", echoDelay = "Оформление", echoFreeze = "Оформление", motion = "Оформление", killFx = "Оформление", crossStyle = "Прицел", crossWidth = "Прицел", noLeaves = "Vegetation", noGrass = "Vegetation", corpseEsp = "Loot", itemEsp = "Loot", lootThrough = "Loot", lootRange = "Loot", lootTextSize = "Loot",
     noVisor = "Vision", cameraFov = "Vision", cameraFovValue = "Vision",
     viewmodel = "Viewmodel", vmX = "Viewmodel", vmY = "Viewmodel", vmZ = "Viewmodel", sticky = "Наведение", noFog = "Освещение", bubbles = "Оформление", snow = "Оформление", snowDrifts = "Оформление", friendHats = "Оформление", espFps = "Цвет и оформление", adaptiveText = "Подписи",
     aim = "Наведение", aimPlayers = "Цели и проверки", aimDummies = "Цели и проверки",
@@ -1894,6 +2045,20 @@ end
 applySearch()
 
 local function initializeGraph()
+local graphBindingLabels = {}
+local activeDetailEntry
+local function bindingSuffix(key)
+    local assigned = bindings[key]
+    if assigned then return "  [" .. assigned .. "]" end
+    local down, up = bindings[key .. "Minus"], bindings[key .. "Plus"]
+    if down or up then return "  [− " .. (down or "—") .. " / + " .. (up or "—") .. "]" end
+    return ""
+end
+table.insert(refreshers, function()
+    for object, entry in pairs(graphBindingLabels) do
+        if object.Parent then object.Text = entry.label .. bindingSuffix(entry.key) end
+    end
+end)
 local graphConnections = {}
 table.insert(cleanups, function() for _, connection in ipairs(graphConnections) do connection:Disconnect() end end)
 local graphTweens = {}
@@ -1925,6 +2090,9 @@ local detailTitle = text(detail, "", {
     Position = UDim2.fromOffset(110, 8), Size = UDim2.fromOffset(700, 32),
     TextSize = 18, TextXAlignment = Enum.TextXAlignment.Left,
 })
+table.insert(refreshers, function()
+    if activeDetailEntry then detailTitle.Text = activeDetailEntry.label .. bindingSuffix(activeDetailEntry.key) end
+end)
 local back = button(detail, "Back", UDim2.fromOffset(12, 8), UDim2.fromOffset(80, 32))
 local detailBody = create("ScrollingFrame", detail, {
     Position = UDim2.fromOffset(12, 54), Size = UDim2.new(1, -24, 1, -68),
@@ -1948,6 +2116,7 @@ local function moveDetail(object, order)
     object.Visible = true
 end
 local function openDetail(titleText)
+    activeDetailEntry = nil
     clearDetail()
     detailTitle.Text = titleText
     detail.Visible, graph.Visible = true, false
@@ -1957,6 +2126,10 @@ local function openDetail(titleText)
     detailBody.CanvasPosition = Vector2.new(0, 0)
     tooltip.Visible = false
 end
+connect(controlRows.subscription.badge.Activated, function()
+    openDetail("Subscription")
+    moveDetail(controlRows.subscription.form, 1)
+end)
 local friendForm = create("Frame", pages["Настройки"], {
     Size = UDim2.new(1, 0, 0, 280), BackgroundTransparency = 1, Visible = false,
 })
@@ -2085,13 +2258,14 @@ renderGraph = function()
     cancelAnimations()
     for _, connection in ipairs(graphConnections) do connection:Disconnect() end
     table.clear(graphConnections)
+    table.clear(graphBindingLabels)
     graph:ClearAllChildren()
     for _, page in pairs(pages) do page.Visible = false end
     searchResults.Visible = false
     for _, tabButton in pairs(tabButtons) do tabButton.Visible = false end
     graph.Visible = true
     local query = normalizeQuery(search.Text)
-    local categories = { "Наведение", "ESP", "Мир", "Камера", "Бинды", "Настройки", "Friends" }
+    local categories = { "Наведение", "ESP", "Мир", "Камера", "Настройки", "Friends", "Бинды" }
     node("OKTAN", 12, 212, 105, true, function() selectedCategory = "Наведение"; selectedGroup = "Наведение"; renderGraph() end)
     for index, category in ipairs(categories) do
         local y = 18 + (index - 1) * 52
@@ -2101,8 +2275,21 @@ renderGraph = function()
             selectedCategory = category
             if category == "Бинды" then
                 openDetail("Keybinds")
-                for index, object in ipairs(roleRows) do moveDetail(object, index) end
-                for index, entry in ipairs(bindingRows) do moveDetail(entry.frame, index + #roleRows) end
+                local order = 0
+                local function heading(label)
+                    order += 1
+                    local labelObject = text(detailBody, label, { Size = UDim2.new(1, -20, 0, 30), LayoutOrder = order, TextSize = 14, TextColor3 = palette.accent, TextXAlignment = Enum.TextXAlignment.Left })
+                    table.insert(temporaryRows, labelObject)
+                end
+                heading("CONTROLS  /  нажми клавишу справа для изменения")
+                for _, object in ipairs(roleRows) do order += 1; moveDetail(object, order) end
+                for _, categoryName in ipairs({ "Наведение", "ESP", "Мир", "Камера", "Бинды", "Настройки" }) do
+                    heading(string.upper(displayNames[categoryName] or categoryName))
+                    for _, entry in ipairs(bindingRows) do
+                        local key = entry.action:gsub("Minus$", ""):gsub("Plus$", "")
+                        if schema[key] and schema[key][5] == categoryName then order += 1; moveDetail(entry.frame, order) end
+                    end
+                end
             elseif category == "Friends" then
                 openDetail("Friends")
                 refreshFriendList()
@@ -2147,11 +2334,15 @@ renderGraph = function()
         local y = 14 + (index - 1) * 40
         wire(Vector2.new(520, selectedY), Vector2.new(588, y + 15))
         local assigned = bindings[entry.key]
-        local label = (entry.key:match("Hue$") and (entry.key == "menuHue" and "Menu Color" or entry.key == "espHue" and "ESP Color" or "FOV Color") or definition[3]) .. (assigned and "  [" .. assigned .. "]" or "")
+        local label = (entry.key:match("Hue$") and (entry.key == "menuHue" and "Menu Color" or entry.key == "espHue" and "ESP Color" or "FOV Color") or definition[3])
         if query ~= "" then label = (displayNames[entry.page] or entry.page) .. " / " .. label end
-        local control = node(label, 588, y, 258, settings[entry.key] == true, function()
+        local control = node(label .. bindingSuffix(entry.key), 588, y, 258, settings[entry.key] == true, function()
             openDetail(definition[3])
-            if entry.key == "musicPlay" then
+            activeDetailEntry = { label = definition[3], key = entry.key }
+            detailTitle.Text = definition[3] .. bindingSuffix(entry.key)
+            if entry.key == "spotifyPlay" then
+                moveDetail(controlRows.spotify.form, 1)
+            elseif entry.key == "musicPlay" then
                 moveDetail(controlRows.music.form, 1)
             elseif entry.key:match("Hue$") then
                 local prefix = entry.key:gsub("Hue$", "")
@@ -2221,15 +2412,12 @@ renderGraph = function()
             })
             table.insert(temporaryRows, explanation)
         end)
+        graphBindingLabels[control] = { label = label, key = entry.key }
         middleBind(control, entry.key, gconnect)
         gconnect(control.MouseEnter, function() tooltip.Text = definition[4] .. "\nСКМ — назначить клавишу"; tooltip.Visible = menu.Visible end)
         gconnect(control.MouseLeave, function() tooltip.Visible = false end)
     end
     if selectedCategory == "Настройки" and selectedGroup == "Клиент" then
-        node("Subscription", 588, 54 + #leaves * 40, 258, false, function()
-            openDetail("Subscription")
-            moveDetail(controlRows.subscription.form, 1)
-        end)
         node("Save / Reset / Unload", 588, 14 + #leaves * 40, 258, false, function()
             openDetail("Client")
             moveDetail(actionsRow, 1)
@@ -3196,7 +3384,33 @@ local updateVegetation = initializeVegetation()
         for model, entry in pairs(viewmodels) do restoreModel(model, entry) end
         restoreFov()
     end)
+    local lastSightItem, tiltedSight = nil, false
+    local function updateSightMode(camera)
+        settings._crosshairAds = settings._ads
+        settings._sightMode = settings._ads and "normal" or "hip"
+        if not camera or not settings._ads then return end
+        local rig = camera:FindFirstChild("ViewModel")
+        local item = rig and rig:FindFirstChild("Item")
+        if item ~= lastSightItem then lastSightItem, tiltedSight = item, false end
+        local offsets = item and item:FindFirstChild("Offsets")
+        local normal = offsets and offsets:FindFirstChild("AimPart")
+        local canted = offsets and offsets:FindFirstChild("AimPartCanted")
+        if not normal or not canted or not normal:IsA("BasePart") or not canted:IsA("BasePart") then return end
+        -- Compare the real sight anchors to the camera axis, including weapon roll.
+        -- Does not infer sight state from the B key, so rebinding/switching weapons stays valid.
+        local function score(part)
+            local p = camera.CFrame:PointToObjectSpace(part.Position)
+            return math.sqrt(p.X * p.X + p.Y * p.Y) / math.max(0.25, math.abs(p.Z))
+                + (1 - math.abs(part.CFrame.UpVector:Dot(camera.CFrame.UpVector))) * 0.35
+        end
+        local normalScore, cantedScore = score(normal), score(canted)
+        if cantedScore + 0.025 < normalScore then tiltedSight = true
+        elseif normalScore + 0.025 < cantedScore then tiltedSight = false end
+        settings._crosshairAds = not tiltedSight
+        settings._sightMode = tiltedSight and "canted" or "normal"
+    end
     return function(dt, camera, desiredFov)
+        updateSightMode(camera)
         applyFov(camera, not adsInput() and desiredFov or nil, dt)
         settings._nativeFov = fov.native or (camera and camera.FieldOfView)
         traceElapsed += dt
@@ -3205,7 +3419,7 @@ local updateVegetation = initializeVegetation()
             local trace = settings._cameraTrace
             if #trace >= 240 then table.remove(trace, 1) end
             table.insert(trace, { time = os.clock(), fov = camera and camera.FieldOfView,
-                native = settings._nativeFov, requested = desiredFov, ads = settings._ads,
+                native = settings._nativeFov, requested = desiredFov, ads = settings._ads, sightMode = settings._sightMode,
                 rmb = Input:IsMouseButtonPressed(Enum.UserInputType.MouseButton2),
                 shift = Input:IsKeyDown(Enum.KeyCode.LeftShift) or Input:IsKeyDown(Enum.KeyCode.RightShift),
                 equip = settings._equipId, offsetBlend = blend })
@@ -3746,6 +3960,7 @@ RunService:BindToRenderStep(renderName, Enum.RenderPriority.Last.Value + 1, func
     chronoEcho.step(dt)
     aimContext.weaponTuning.step(dt)
     controlRows.music.step(dt)
+    controlRows.spotify.step(dt)
     controlRows.subscription.step(dt)
     updateLootESP(dt, camera)
 
@@ -3804,7 +4019,7 @@ RunService:BindToRenderStep(renderName, Enum.RenderPriority.Last.Value + 1, func
         renderState.shownRingRadius = settings.radius
         ring.Size = UDim2.fromOffset(renderState.shownRingRadius * 2, renderState.shownRingRadius * 2)
     end
-    local showCross = camera ~= nil and inputReady and settings.crosshair and not settings._ads
+    local showCross = camera ~= nil and inputReady and settings.crosshair and not settings._crosshairAds
     local style, thickness = settings.crossStyle, settings.crossWidth
     for _, arm in ipairs(crosshair) do arm.Visible = showCross and style ~= 2 end
     crosshair.dot.Visible = showCross and style ~= 1
