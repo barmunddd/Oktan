@@ -23,6 +23,7 @@ end
 
 -- Every exposed setting has its own description, bounds and keyboard actions.
 local definitions = {
+    { "espStyle", 2, "ESP Style", "Classic — прежние подписи; Glass — компактные карточки, здоровье и оружие под ногами; Minimal — без подложек. Chams и линии мягче в Glass/Minimal.", "ESP", 1, 3 },
     { "skinTextures", true, "Glass Textures", "Объёмное стекло с мягкими бликами и инеем. Отключи для более простого фона; Light Menu также скрывает декор.", "Настройки" },
     { "islandMusic", true, "Music Island", "Музыка в Dynamic Island: плавная смена трека, Pause/Stop и локальные строки LRC. В развёрнутом виде время, киллы и бинды сохраняются.", "Бинды" },
     { "adaptiveEsp", true, "Adaptive ESP", "При большом числе целей снижает частоту только ESP: до 30 обновлений/с после 16 целей и до 20 после 32. Игровой FPS не ограничивает; все цели остаются видимыми.", "Настройки" },
@@ -133,7 +134,7 @@ for _, definition in ipairs(definitions) do
     settings[key] = definition[2]
 end
 local bindings = { menu = "Insert", aim = "MouseButton2", zoom = "LeftAlt", inspect = "F4" }
-local allowedActions = { menu = true, inspect = true, containerDump = true }
+local allowedActions = { menu = true, inspect = true, containerDump = true, friendPick = true }
 for key, value in pairs(defaults) do
     if type(value) == "boolean" then
         allowedActions[key] = true
@@ -633,7 +634,7 @@ for index, definition in ipairs(definitions) do
     end
 end
 for index, entry in ipairs({
-    { "menu", "Menu" }, { "inspect", "Inspect" }, { "containerDump", "Export Container" },
+    { "menu", "Menu" }, { "inspect", "Inspect" }, { "containerDump", "Export Container" }, { "friendPick", "Pick Friend" },
 }) do
     local frame = row(pages["Бинды"], 100 + index, 54)
     table.insert(roleRows, frame)
@@ -1393,6 +1394,95 @@ end
 controlRows.studio=initializeStudioSkin()
 end
 
+do
+local function initializeFriends()
+    local api={revision=0}
+    local effect,age,messageAge
+    local toast=text(gui,"",{Name="FriendFeedback",AnchorPoint=Vector2.new(.5,1),Position=UDim2.new(.5,0,1,-148),Size=UDim2.fromOffset(420,38),BackgroundColor3=Color3.fromRGB(10,20,23),BackgroundTransparency=.12,TextSize=13,Visible=false,ZIndex=30})
+    rounded(toast,14); stroke(toast,palette.accent).Transparency=.65
+    local function notify(message)
+        configStatus=message; toast.Text=message; toast.Visible=true; messageAge=0
+    end
+    local function clearEffect()
+        if effect then effect.shine:Destroy(); effect.jewel:Destroy(); effect=nil end
+    end
+    local function findPlayer(name)
+        for _,other in ipairs(Players:GetPlayers()) do if string.lower(other.Name)==name then return other end end
+    end
+    local function flash(other)
+        clearEffect()
+        if not other or not other.Character then return end
+        local head=other.Character:FindFirstChild("Head")
+        if not head then return end
+        local shine=create("Highlight",gui,{Adornee=other.Character,FillColor=Color3.fromRGB(150,235,220),OutlineColor=Color3.fromRGB(225,255,245),FillTransparency=.58,OutlineTransparency=.15})
+        local jewel=create("BillboardGui",gui,{Adornee=head,Size=UDim2.fromOffset(54,54),StudsOffsetWorldSpace=Vector3.new(0,2.6,0),AlwaysOnTop=true})
+        local diamond=create("Frame",jewel,{AnchorPoint=Vector2.new(.5,.5),Position=UDim2.fromScale(.5,.5),Size=UDim2.fromOffset(15,15),Rotation=45,BackgroundColor3=Color3.fromRGB(180,250,228),BorderSizePixel=0})
+        rounded(diamond,3)
+        effect,age={shine=shine,jewel=jewel,diamond=diamond},0
+    end
+    api.add=function(raw)
+        local name=type(raw)=="string" and string.lower(raw:match("^%s*(.-)%s*$")) or ""
+        if #name<3 or #name>20 or not name:match("^[%w_]+$") then notify("Нужен username: 3–20 букв, цифр или _"); return false end
+        if name==string.lower(player.Name) then notify("Себя добавлять не нужно"); return false end
+        if friendNames[name] then notify("@"..name.." уже в тиммейтах"); return false end
+        local count=0; for _ in pairs(friendNames) do count+=1 end
+        if count>=200 then notify("В списке уже 200 тиммейтов"); return false end
+        friendNames[name]=true; api.revision+=1; changed()
+        flash(findPlayer(name))
+        notify("@"..name.." добавлен в тиммейты OKTAN")
+        if api.refresh then api.refresh() end
+        return true
+    end
+    api.remove=function(name)
+        name=type(name)=="string" and string.lower(name) or ""
+        if not friendNames[name] then return false end
+        friendNames[name]=nil; api.revision+=1; changed()
+        notify("@"..name.." удалён из тиммейтов")
+        if api.refresh then api.refresh() end
+        return true
+    end
+    api.pick=function()
+        local camera=workspace.CurrentCamera
+        if not camera then return false end
+        local mouse=Input:GetMouseLocation()
+        local ray=camera:ScreenPointToRay(mouse.X,mouse.Y)
+        local params=RaycastParams.new(); params.FilterType=Enum.RaycastFilterType.Exclude
+        params.FilterDescendantsInstances=player.Character and {player.Character,camera} or {camera}
+        local hit=workspace:Raycast(ray.Origin,ray.Direction*160,params)
+        if not hit then notify("Наведи курсор на игрока рядом"); return false end
+        local object,owner=hit.Instance,nil
+        for _=1,12 do
+            if not object or object==workspace then break end
+            if object:IsA("Model") then owner=Players:GetPlayerFromCharacter(object); if owner then break end end
+            object=object.Parent
+        end
+        local mine=player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+        local theirs=owner and owner.Character and owner.Character:FindFirstChild("HumanoidRootPart")
+        if not owner or owner==player or not mine or not theirs then notify("Выбран не игрок • наведи на персонажа"); return false end
+        if (mine.Position-theirs.Position).Magnitude>80 then notify("Подойди к игроку ближе: максимум 80 studs"); return false end
+        return api.add(owner.Name)
+    end
+    api.step=function(dt)
+        if toast.Visible then messageAge+=dt; if messageAge>3 then toast.Visible=false end end
+        if effect then
+            age+=dt
+            if age>=2 or not effect.shine.Parent then clearEffect()
+            else
+                local fade=age/2
+                effect.shine.FillTransparency=.58+.42*fade
+                effect.shine.OutlineTransparency=.15+.85*fade
+                effect.diamond.BackgroundTransparency=fade
+                effect.diamond.Rotation=45+math.sin(age*3)*12
+            end
+        end
+        if api.uiStep then api.uiStep(dt) end
+    end
+    table.insert(cleanups,function() clearEffect(); toast:Destroy() end)
+    return api
+end
+controlRows.friends=initializeFriends()
+end
+
 local raidReport = button(actionsRow, "Export Debug", UDim2.fromOffset(516, 12), UDim2.fromOffset(184, 32))
 describe(raidReport, "Если Kills показывает прочерк, сохраните структуру рейдовых данных для подключения счётчика.")
 connect(raidReport.Activated, function()
@@ -1546,6 +1636,7 @@ connect(Input.InputBegan, function(input, processed)
     if processed or not focused then return end
     if name == bindings.menu then setMenu(not menu.Visible); return end
     if menu.Visible then return end
+    if name == bindings.friendPick then controlRows.friends.pick(); return end
     if name == bindings.containerDump then exportContainer(); return end
     if name == bindings.aim or name == bindings.zoom then return end
     if name == bindings.inspect and inspectAction then inspectAction(); return end
@@ -1567,23 +1658,23 @@ connect(Input.InputBegan, function(input, processed)
         end
     end
 end)
-local dragStart, dragPosition
+controlRows.drag = {}
 connect(title.InputBegan, function(input)
     if input.UserInputType == Enum.UserInputType.MouseButton1 then
-        dragStart, dragPosition = input.Position, menu.Position
+        controlRows.drag.start, controlRows.drag.position = input.Position, menu.Position
     end
 end)
 connect(Input.InputChanged, function(input)
     if input.UserInputType ~= Enum.UserInputType.MouseMovement then return end
     if activeSlider then activeSlider(input.Position.X) end
-    if dragStart then
-        local delta = input.Position - dragStart
+    if controlRows.drag.start then
+        local delta = input.Position - controlRows.drag.start
         local camera = workspace.CurrentCamera
         if camera then
             local viewport = camera.ViewportSize
             local half = menu.AbsoluteSize * 0.5
-            local x = dragPosition.X.Scale * viewport.X + dragPosition.X.Offset + delta.X
-            local y = dragPosition.Y.Scale * viewport.Y + dragPosition.Y.Offset + delta.Y
+            local x = controlRows.drag.position.X.Scale * viewport.X + controlRows.drag.position.X.Offset + delta.X
+            local y = controlRows.drag.position.Y.Scale * viewport.Y + controlRows.drag.position.Y.Offset + delta.Y
             menu.Position = UDim2.fromOffset(
                 math.clamp(x, half.X, math.max(half.X, viewport.X - half.X)),
                 math.clamp(y, half.Y, math.max(half.Y, viewport.Y - half.Y)))
@@ -1592,12 +1683,12 @@ connect(Input.InputChanged, function(input)
 end)
 connect(Input.InputEnded, function(input)
     if input.UserInputType == Enum.UserInputType.MouseButton1 then
-        activeSlider, dragStart = nil, nil
+        activeSlider, controlRows.drag.start = nil, nil
     end
 end)
 connect(Input.WindowFocusReleased, function()
     focused = false
-    activeSlider, dragStart, capture = nil, nil, nil
+    activeSlider, controlRows.drag.start, capture = nil, nil, nil
     tooltip.Visible = false
     refreshAll()
 end)
@@ -1658,7 +1749,7 @@ local islandList = create("Frame", islandScroll, {
 create("UIListLayout", islandList, { Padding = UDim.new(0, 5), SortOrder = Enum.SortOrder.LayoutOrder })
 islandBody.Parent = islandList
 islandBody.LayoutOrder = 1000
-local islandLabels = { menu = "Menu", inspect = "Inspect" }
+local islandLabels = { menu = "Menu", inspect = "Inspect", friendPick = "Pick Friend" }
 for _, definition in ipairs(definitions) do
     local key = definition[1]
     islandLabels[key] = definition[3]
@@ -2319,7 +2410,7 @@ local treeGroups = {
     ["Бинды"] = { "Инвентарь", "Dynamic Island", "Управление", "Назначения функций" },
     ["Настройки"] = { "Оформление", "Клиент", "Music", "Performance" },
 }
-local settingGroup = { skinTextures = "Оформление", islandMusic = "Dynamic Island", adaptiveEsp = "Performance", lowFx = "Performance", perfDebug = "Performance", yandexPlay = "Music", spotifyPlay = "Music", musicPlay = "Music", musicVolume = "Music", musicRepeat = "Music", musicIndex = "Music", noRecoil = "Weapon Tuning", aimEase = "Область и плавность", aimFilter = "Область и плавность", graphics = "Visual Studio", gfxTier = "Visual Studio", gfxLook = "Visual Studio", echo = "Оформление", echoDelay = "Оформление", echoFreeze = "Оформление", motion = "Оформление", killFx = "Оформление", crossStyle = "Прицел", crossWidth = "Прицел", noLeaves = "Vegetation", noGrass = "Vegetation", corpseEsp = "Loot", itemEsp = "Loot", lootThrough = "Loot", lootRange = "Loot", lootTextSize = "Loot",
+local settingGroup = { espStyle = "Цвет и оформление", skinTextures = "Оформление", islandMusic = "Dynamic Island", adaptiveEsp = "Performance", lowFx = "Performance", perfDebug = "Performance", yandexPlay = "Music", spotifyPlay = "Music", musicPlay = "Music", musicVolume = "Music", musicRepeat = "Music", musicIndex = "Music", noRecoil = "Weapon Tuning", aimEase = "Область и плавность", aimFilter = "Область и плавность", graphics = "Visual Studio", gfxTier = "Visual Studio", gfxLook = "Visual Studio", echo = "Оформление", echoDelay = "Оформление", echoFreeze = "Оформление", motion = "Оформление", killFx = "Оформление", crossStyle = "Прицел", crossWidth = "Прицел", noLeaves = "Vegetation", noGrass = "Vegetation", corpseEsp = "Loot", itemEsp = "Loot", lootThrough = "Loot", lootRange = "Loot", lootTextSize = "Loot",
     noVisor = "Vision", cameraFov = "Vision", cameraFovValue = "Vision",
     viewmodel = "Viewmodel", vmX = "Viewmodel", vmY = "Viewmodel", vmZ = "Viewmodel", sticky = "Наведение", noFog = "Освещение", bubbles = "Оформление", snow = "Оформление", snowDrifts = "Оформление", friendHats = "Оформление", espFps = "Цвет и оформление", adaptiveText = "Подписи",
     aim = "Наведение", aimPlayers = "Цели и проверки", aimDummies = "Цели и проверки",
@@ -2530,61 +2621,77 @@ connect(controlRows.subscription.badge.Activated, function()
     openDetail("Subscription")
     moveDetail(controlRows.subscription.form, 1)
 end)
-local friendForm = create("Frame", pages["Настройки"], {
-    Size = UDim2.new(1, 0, 0, 280), BackgroundTransparency = 1, Visible = false,
-})
-local friendInput = text(friendForm, "", {
-    Position = UDim2.fromOffset(8, 8), Size = UDim2.new(1, -180, 0, 36),
-    BackgroundColor3 = palette.control, BackgroundTransparency = 0.1,
-    ClearTextOnFocus = false, PlaceholderText = "Roblox username", TextXAlignment = Enum.TextXAlignment.Left,
-}, "TextBox")
-rounded(friendInput, 10)
-create("UIPadding", friendInput, { PaddingLeft = UDim.new(0, 12) })
-local friendAdd = button(friendForm, "Add / Remove", UDim2.new(1, -158, 0, 8), UDim2.fromOffset(150, 36))
-local friendList = text(friendForm, "", {
-    Position = UDim2.fromOffset(8, 60), Size = UDim2.new(1, -16, 0, 200),
-    TextWrapped = true, TextXAlignment = Enum.TextXAlignment.Left, TextYAlignment = Enum.TextYAlignment.Top,
-})
-local function refreshFriendList()
-    local names = {}
-    for name in pairs(friendNames) do table.insert(names, name) end
-    table.sort(names)
-    friendList.Text = #names > 0 and table.concat(names, "\n") or "No friends added"
+local friendForm,refreshFriendList
+do
+    local api=controlRows.friends
+    friendForm=create("Frame",pages["Настройки"],{Name="FriendsPanel",Size=UDim2.new(1,-12,0,390),BackgroundTransparency=1,Visible=false})
+    api.form=friendForm
+    text(friendForm,"YOUR SQUAD",{Position=UDim2.fromOffset(8,0),Size=UDim2.new(1,-16,0,22),TextColor3=palette.accent,TextSize=12,TextXAlignment=Enum.TextXAlignment.Left})
+    local input=text(friendForm,"",{Name="FriendUsername",Position=UDim2.fromOffset(8,30),Size=UDim2.new(1,-132,0,36),BackgroundColor3=palette.control,BackgroundTransparency=.15,PlaceholderText="Add Roblox username…",ClearTextOnFocus=false,TextXAlignment=Enum.TextXAlignment.Left},"TextBox")
+    rounded(input,11); create("UIPadding",input,{PaddingLeft=UDim.new(0,12)})
+    local add=button(friendForm,"Add",UDim2.new(1,-112,0,30),UDim2.fromOffset(104,36))
+    local quick=row(friendForm,0,64); quick.Position,quick.Size=UDim2.fromOffset(8,78),UDim2.new(1,-16,0,64)
+    text(quick,"Quick Add",{Position=UDim2.fromOffset(14,6),Size=UDim2.new(1,-180,0,24),TextSize=14,TextXAlignment=Enum.TextXAlignment.Left})
+    text(quick,"Наведи на игрока → нажми бинд",{Position=UDim2.fromOffset(14,33),Size=UDim2.new(1,-160,0,22),TextSize=11,TextColor3=palette.muted,TextXAlignment=Enum.TextXAlignment.Left})
+    bindButton(quick,"friendPick",UDim2.new(1,-144,0,18),UDim2.fromOffset(130,28))
+    local searchBox=text(friendForm,"",{Name="FriendSearch",Position=UDim2.fromOffset(8,155),Size=UDim2.new(1,-165,0,30),BackgroundColor3=palette.control,BackgroundTransparency=.4,PlaceholderText="Search squad…",ClearTextOnFocus=false,TextXAlignment=Enum.TextXAlignment.Left},"TextBox")
+    rounded(searchBox,9); create("UIPadding",searchBox,{PaddingLeft=UDim.new(0,11)})
+    local countLabel=text(friendForm,"",{Position=UDim2.new(1,-150,0,155),Size=UDim2.fromOffset(142,30),TextSize=11,TextColor3=palette.muted,TextXAlignment=Enum.TextXAlignment.Right})
+    local list=create("ScrollingFrame",friendForm,{Name="SquadCards",Position=UDim2.fromOffset(8,198),Size=UDim2.new(1,-16,0,186),BackgroundTransparency=1,BorderSizePixel=0,AutomaticCanvasSize=Enum.AutomaticSize.Y,CanvasSize=UDim2.fromOffset(0,0),ScrollBarThickness=3})
+    local cards={}
+    local function roster()
+        local players={}
+        for _,other in ipairs(Players:GetPlayers()) do players[string.lower(other.Name)]=other end
+        return players
+    end
+    local function updatePresence()
+        local players=roster()
+        local saved,here=0,0
+        for name in pairs(friendNames) do saved+=1; if players[name] then here+=1 end end
+        countLabel.Text=string.format("%d saved • %d here",saved,here)
+        for name,entry in pairs(cards) do
+            local other=players[name]
+            entry.presence.Text=other and "ON SERVER" or "SAVED TEAMMATE"
+            entry.presence.TextColor3=other and Color3.fromRGB(125,231,183) or palette.muted
+            entry.dot.BackgroundColor3=other and Color3.fromRGB(125,231,183) or Color3.fromRGB(92,107,119)
+        end
+    end
+    refreshFriendList=function()
+        list:ClearAllChildren(); table.clear(cards)
+        create("UIListLayout",list,{Padding=UDim.new(0,7),SortOrder=Enum.SortOrder.LayoutOrder})
+        local names={}; local query=string.lower(searchBox.Text)
+        for name in pairs(friendNames) do if query=="" or name:find(query,1,true) then table.insert(names,name) end end
+        table.sort(names)
+        for i,name in ipairs(names) do
+            if i>200 then break end
+            local card=create("Frame",list,{Name="SquadCard",Size=UDim2.new(1,-8,0,56),BackgroundColor3=palette.panel,BackgroundTransparency=.16,BorderSizePixel=0,LayoutOrder=i})
+            rounded(card,13); stroke(card,palette.accent).Transparency=.85
+            local initials=text(card,string.upper(name:sub(1,2)),{Position=UDim2.fromOffset(10,10),Size=UDim2.fromOffset(36,36),BackgroundColor3=palette.control,BackgroundTransparency=.1,TextColor3=palette.accent,TextSize=13})
+            rounded(initials,12)
+            text(card,"@"..name,{Position=UDim2.fromOffset(60,7),Size=UDim2.new(1,-170,0,22),TextSize=14,TextXAlignment=Enum.TextXAlignment.Left,TextTruncate=Enum.TextTruncate.AtEnd})
+            local presence=text(card,"",{Position=UDim2.fromOffset(72,31),Size=UDim2.new(1,-180,0,17),TextSize=9,TextXAlignment=Enum.TextXAlignment.Left})
+            local dot=create("Frame",card,{Position=UDim2.fromOffset(61,36),Size=UDim2.fromOffset(5,5),BorderSizePixel=0}); rounded(dot,5)
+            local remove=button(card,"Remove",UDim2.new(1,-94,0,14),UDim2.fromOffset(82,28)); remove.TextSize=11
+            remove.Activated:Connect(function() api.remove(name) end)
+            cards[name]={presence=presence,dot=dot}
+        end
+        if #names==0 then
+            text(list,query=="" and "Пока никого нет • добавь username или используй Quick Add" or "Совпадений нет",{Size=UDim2.new(1,-10,0,72),TextColor3=palette.muted,TextWrapped=true,TextSize=13})
+        end
+        updatePresence()
+    end
+    api.refresh=refreshFriendList
+    connect(add.Activated,function() if api.add(input.Text) then input.Text="" end end)
+    connect(input.FocusLost,function(enter) if enter and api.add(input.Text) then input.Text="" end end)
+    connect(searchBox:GetPropertyChangedSignal("Text"),refreshFriendList)
+    describe(input,"Username, не Display Name. Это локальные тиммейты OKTAN, без заявки в Roblox.")
+    local elapsed=0
+    api.uiStep=function(dt)
+        elapsed+=dt
+        if elapsed>=1 and menu.Visible and detail.Visible and friendForm.Parent==detailBody then elapsed=0; updatePresence() end
+    end
 end
-describe(friendInput, "Введите username, а не отображаемое имя. Повторное добавление удаляет друга.")
-connect(friendAdd.Activated, function()
-    local name = string.lower(friendInput.Text:match("^%s*(.-)%s*$"))
-    if #name < 3 or #name > 20 or not name:match("^[%w_]+$") then
-        friendList.Text = "Введите username из 3–20 букв, цифр или подчёркиваний."
-        return
-    end
-    friendNames[name] = not friendNames[name] or nil
-    if friendNames[name] then
-        local other = Players:FindFirstChild(friendInput.Text:match("^%s*(.-)%s*$"))
-        if not other then
-            for _, candidate in ipairs(Players:GetPlayers()) do if string.lower(candidate.Name) == name then other = candidate; break end end
-        end
-        if other and other.Character then
-            local shine = create("Highlight", gui, { Adornee = other.Character, FillColor = Color3.fromRGB(160, 240, 255), OutlineColor = Color3.fromRGB(245, 255, 255), FillTransparency = 0.2, OutlineTransparency = 0 })
-            local jewel = create("BillboardGui", gui, { Adornee = other.Character:FindFirstChild("Head"), Size = UDim2.fromOffset(70, 70), StudsOffsetWorldSpace = Vector3.new(0, 3, 0), AlwaysOnTop = true })
-            local diamond = create("Frame", jewel, { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromOffset(24, 24), Rotation = 45, BackgroundColor3 = Color3.fromRGB(180, 245, 255), BorderSizePixel = 0 })
-            local started = os.clock()
-            local pulse
-            pulse = RunService.RenderStepped:Connect(function()
-                local age = os.clock() - started
-                if age > 2.5 or not shine.Parent then pulse:Disconnect(); shine:Destroy(); jewel:Destroy(); return end
-                shine.FillTransparency = math.clamp(0.35 + age / 4 + math.sin(age * 12) * 0.15, 0, 1)
-                shine.OutlineTransparency = age / 2.5
-                diamond.BackgroundTransparency = age / 2.5
-                diamond.Rotation = 45 + math.sin(age * 4) * 20
-            end)
-            table.insert(cleanups, function() pulse:Disconnect(); shine:Destroy(); jewel:Destroy() end)
-        end
-    end
-    friendInput.Text = ""
-    changed()
-    refreshFriendList()
-end)
+
 local function gconnect(event, callback)
     table.insert(graphConnections, event:Connect(callback))
 end
@@ -2789,8 +2896,8 @@ renderGraph = function()
                 end)
                 local reset = button(panel, "Вернуть исходный", UDim2.fromOffset(8, 342), UDim2.fromOffset(200, 34))
                 reset.Activated:Connect(function() choose(initial) end)
-            elseif entry.key == "gfxTier" or entry.key == "gfxLook" then
-                local names = entry.key == "gfxTier" and { "Low", "Balanced", "Ultra" } or { "Arctic", "Golden", "Neon", "Cinema", "Clean" }
+            elseif entry.key == "gfxTier" or entry.key == "gfxLook" or entry.key == "espStyle" then
+                local names = entry.key == "espStyle" and { "Classic", "Glass", "Minimal" } or entry.key == "gfxTier" and { "Low", "Balanced", "Ultra" } or { "Arctic", "Golden", "Neon", "Cinema", "Clean" }
                 local panel = create("Frame", detailBody, { Size = UDim2.new(1, -20, 0, 95), BackgroundTransparency = 1, LayoutOrder = 1 })
                 table.insert(temporaryRows, panel)
                 local buttons = {}
@@ -2987,7 +3094,7 @@ local function screenLabel(parent)
         TextWrapped = false, TextTruncate = Enum.TextTruncate.None,
     })
 end
-local function placeLabel(label, value, x, y, size, anchorX, anchorY, camera, color, avoidOverlap)
+local function placeLabel(label, value, x, y, size, anchorX, anchorY, camera, color, avoidOverlap, verticalPadding)
     label.Visible = false
     if value == "" then return 0 end
     local metrics = labelMetrics[label]
@@ -2998,7 +3105,7 @@ local function placeLabel(label, value, x, y, size, anchorX, anchorY, camera, co
     end
     local width = metrics.width
     local _, breaks = value:gsub("\n", "")
-    local height = (size + 4) * (breaks + 1)
+    local height = (size + 4) * (breaks + 1) + (verticalPadding or 0)
     local left, top = x - width * anchorX, y - height * anchorY
     local viewport = camera.ViewportSize
     left = math.clamp(left, 0, math.max(0, viewport.X - width))
@@ -3022,9 +3129,18 @@ local function placeLabel(label, value, x, y, size, anchorX, anchorY, camera, co
         end)
     end
     if avoidOverlap ~= false then
-        for _, shift in ipairs({ metrics.shift or 0, 0, math.min(width + 6, 160), -math.min(width + 6, 160) }) do
-            local proposed = originalLeft + shift
-            if proposed >= 0 and proposed + width <= viewport.X and not overlaps(proposed) then left = proposed; break end
+        local placed=false
+        local function try(shift)
+            local proposed=originalLeft+shift
+            if proposed>=0 and proposed+width<=viewport.X and not overlaps(proposed) then left=proposed; return true end
+            return false
+        end
+        placed=try(metrics.shift or 0) or try(0)
+        if not placed then
+            for lane=1,6 do
+                local step=(width+8)*lane
+                if try(step) or try(-step) then break end
+            end
         end
     end
     metrics.shift = left - originalLeft
@@ -3040,7 +3156,7 @@ local function placeLabel(label, value, x, y, size, anchorX, anchorY, camera, co
     label.TextSize = size
     label.TextColor3 = color
     label.Visible = true
-    return metrics.shift
+    return metrics.shift, rectangle, width, height
 end
 local bodyNames = {
     Head = true, UpperTorso = true, LowerTorso = true, Torso = true,
@@ -3083,7 +3199,9 @@ local function bodyBounds(camera, candidate)
         or minimum.X > camera.ViewportSize.X or minimum.Y > camera.ViewportSize.Y then return nil end
     return minimum, maximum
 end
-local function renderLabels(screen, candidate, low, high, camera, color)
+local renderLabels
+do
+local function classicLabels(screen, candidate, low, high, camera, color)
     local height = math.max(1, high.Y - low.Y)
     local size = settings.textSize
     if settings.adaptiveText then
@@ -3105,6 +3223,109 @@ local function renderLabels(screen, candidate, low, high, camera, color)
     screen.labelLeader.Position = UDim2.fromOffset(math.round(math.min(center, center + shift)), math.round(low.Y - 3))
     screen.labelLeader.Size = UDim2.fromOffset(math.round(math.abs(shift)), 1)
     placeLabel(screen.weaponLabel, weapon and weapon.Name or "", center + shift, high.Y + 4, size, 0.5, 0, camera, color, false)
+end
+
+
+local function ensureCard(screen)
+    if screen.infoCard then return end
+    screen.layoutLabel=screenLabel(screen.container)
+    screen.infoCard=create("Frame",screen.container,{Name="EspIdentityCard",BackgroundColor3=Color3.fromRGB(10,17,23),BackgroundTransparency=.16,BorderSizePixel=0,ZIndex=2})
+    rounded(screen.infoCard,8)
+    screen.infoRim=stroke(screen.infoCard,Color3.fromRGB(175,193,202)); screen.infoRim.Transparency=.78
+    for _,label in ipairs({screen.nameLabel,screen.healthLabel,screen.distanceLabel}) do label.Parent=screen.infoCard; label.ZIndex=3 end
+    screen.hpTrack=create("Frame",screen.infoCard,{Position=UDim2.new(0,6,1,-3),Size=UDim2.new(1,-12,0,2),BackgroundColor3=Color3.fromRGB(42,57,65),BorderSizePixel=0,ZIndex=3})
+    rounded(screen.hpTrack,2)
+    screen.hpFill=create("Frame",screen.hpTrack,{Size=UDim2.fromScale(1,1),BackgroundColor3=Color3.fromRGB(140,225,180),BorderSizePixel=0,ZIndex=3}); rounded(screen.hpFill,2)
+    screen.weaponChip=create("Frame",screen.container,{Name="EspWeaponChip",BackgroundColor3=Color3.fromRGB(10,17,23),BackgroundTransparency=.22,BorderSizePixel=0,ZIndex=2,Visible=false})
+    rounded(screen.weaponChip,6); screen.weaponRim=stroke(screen.weaponChip,Color3.fromRGB(175,193,202)); screen.weaponRim.Transparency=.86
+    screen.weaponLabel.ZIndex=3
+    screen.anchorDot=create("Frame",screen.container,{Size=UDim2.fromOffset(3,3),BorderSizePixel=0,ZIndex=2,Visible=false}); rounded(screen.anchorDot,3)
+end
+renderLabels=function(screen,candidate,low,high,camera,color)
+    if settings.espStyle==1 then
+        if screen.infoCard then
+            screen.infoCard.Visible,screen.weaponChip.Visible,screen.anchorDot.Visible=false,false,false
+            for _,label in ipairs({screen.nameLabel,screen.healthLabel,screen.distanceLabel}) do label.Parent=screen.container; label.TextStrokeTransparency=.35; label.Font=Enum.Font.Gotham; label.TextXAlignment=Enum.TextXAlignment.Center end
+        end
+        classicLabels(screen,candidate,low,high,camera,color)
+        return
+    end
+    ensureCard(screen)
+    for _,label in ipairs({screen.nameLabel,screen.healthLabel,screen.distanceLabel}) do if label.Parent~=screen.infoCard then label.Parent=screen.infoCard end end
+    local minimal=settings.espStyle==3
+    local size=settings.textSize
+    if settings.adaptiveText then size=math.clamp(math.floor(size*math.sqrt(math.max(1,high.Y-low.Y)/110)),10,settings.textSize) end
+    local center=(low.X+high.X)*.5
+    local now=os.clock()
+    if not screen.metaAt or now-screen.metaAt>.12 then
+        screen.metaAt=now
+        screen.metaDistance=math.round((candidate.root.Position-camera.CFrame.Position).Magnitude)
+    end
+    local name=settings.names and ((candidate.owner and candidate.owner.Name or candidate.model.Name)..(isFriend(candidate.owner) and " · ALLY" or "")) or ""
+    local hp=settings.health and string.format("%d HP",math.ceil(candidate.humanoid.Health)) or ""
+    local distance=settings.distance and tostring(screen.metaDistance).." st" or ""
+    local meta=hp..(hp~="" and distance~="" and "     " or "")..distance
+    local value=name..(name~="" and meta~="" and "\n" or "")..meta
+    local shift,rectangle,width,height=placeLabel(screen.layoutLabel,value,center,low.Y-8,size,.5,1,camera,palette.text,true,8)
+    screen.layoutLabel.Visible=false
+    screen.infoCard.Visible=rectangle~=nil
+    screen.nameLabel.Visible=name~=""
+    screen.healthLabel.Visible=hp~=""
+    screen.distanceLabel.Visible=distance~=""
+    if rectangle then
+        screen.infoCard.Position=UDim2.fromOffset(math.round(rectangle.left),math.round(rectangle.top))
+        screen.infoCard.Size=UDim2.fromOffset(width,height)
+        screen.infoCard.BackgroundTransparency=minimal and 1 or .16
+        screen.infoRim.Enabled=not minimal
+        screen.infoRim.Color=isFriend(candidate.owner) and Color3.fromRGB(135,225,181) or color:Lerp(Color3.fromRGB(187,206,214),.8)
+        screen.nameLabel.Position=UDim2.fromOffset(8,3)
+        screen.nameLabel.Size=UDim2.new(1,-16,0,size+4)
+        screen.nameLabel.Text,screen.nameLabel.TextSize=name,size
+        screen.nameLabel.Font=Enum.Font.GothamBold
+        screen.nameLabel.TextColor3=Color3.fromRGB(237,243,246)
+        screen.nameLabel.TextXAlignment=Enum.TextXAlignment.Left
+        local y=name~="" and size+7 or 4
+        local two=hp~="" and distance~=""
+        screen.healthLabel.Position=UDim2.fromOffset(8,y)
+        screen.healthLabel.Size=two and UDim2.new(.5,-8,0,size+2) or UDim2.new(1,-16,0,size+2)
+        screen.distanceLabel.Position=two and UDim2.new(.5,0,0,y) or UDim2.fromOffset(8,y)
+        screen.distanceLabel.Size=two and UDim2.new(.5,-8,0,size+2) or UDim2.new(1,-16,0,size+2)
+        screen.healthLabel.Text,screen.distanceLabel.Text=hp,distance
+        screen.healthLabel.TextSize,screen.distanceLabel.TextSize=math.max(9,size-2),math.max(9,size-2)
+        screen.healthLabel.TextXAlignment=Enum.TextXAlignment.Left
+        screen.distanceLabel.TextXAlignment=two and Enum.TextXAlignment.Right or Enum.TextXAlignment.Left
+        for _,label in ipairs({screen.nameLabel,screen.healthLabel,screen.distanceLabel}) do label.TextStrokeTransparency=1 end
+        screen.distanceLabel.TextColor3=Color3.fromRGB(156,177,188)
+        local fraction=math.clamp(candidate.humanoid.Health/math.max(1,candidate.humanoid.MaxHealth),0,1)
+        local hpColor=Color3.fromHSV(fraction/3,.4,.9)
+        screen.healthLabel.TextColor3=hpColor
+        screen.hpTrack.Visible=settings.health and not settings.healthBar
+        screen.hpFill.BackgroundColor3=hpColor
+        if screen.shownHp~=fraction then
+            if screen.healthTween then screen.healthTween:Cancel(); screen.healthTween=nil end
+            if screen.shownHp and settings.motion and not settings.lowFx then
+                screen.healthTween=TweenService:Create(screen.hpFill,TweenInfo.new(.18,Enum.EasingStyle.Quart,Enum.EasingDirection.Out),{Size=UDim2.fromScale(fraction,1)})
+                screen.healthTween:Play()
+            else screen.hpFill.Size=UDim2.fromScale(fraction,1) end
+            screen.shownHp=fraction
+        end
+    end
+    local weapon=settings.weapon and heldItem(candidate.model)
+    local _,weaponRect,weaponWidth,weaponHeight=placeLabel(screen.weaponLabel,weapon and weapon.Name or "",center+shift,high.Y+6,math.max(10,size-1),.5,0,camera,Color3.fromRGB(215,229,235),false,4)
+    screen.weaponChip.Visible=weaponRect~=nil and not minimal
+    screen.weaponLabel.TextStrokeTransparency=minimal and .35 or 1
+    if weaponRect then screen.weaponChip.Position=UDim2.fromOffset(math.round(weaponRect.left),math.round(weaponRect.top)); screen.weaponChip.Size=UDim2.fromOffset(weaponWidth,weaponHeight) end
+    if not screen.labelLeader then screen.labelLeader=create("Frame",screen.container,{BorderSizePixel=0,ZIndex=2}) end
+    screen.labelLeader.Visible=rectangle~=nil and math.abs(shift)>2
+    screen.labelLeader.BackgroundColor3=color
+    screen.labelLeader.BackgroundTransparency=.65
+    screen.labelLeader.Position=UDim2.fromOffset(math.round(math.min(center,center+shift)),math.round(low.Y-5))
+    screen.labelLeader.Size=UDim2.fromOffset(math.round(math.abs(shift)),1)
+    screen.anchorDot.Visible=screen.labelLeader.Visible
+    screen.anchorDot.BackgroundColor3=color
+    screen.anchorDot.Position=UDim2.fromOffset(math.round(center)-1,math.round(low.Y-6))
+end
+
 end
 
 local worldIndex
@@ -3214,7 +3435,7 @@ local function line(screen, a, b, color, thickness)
     segment.Size = UDim2.fromOffset(length, thickness or settings.lineWidth)
     segment.Rotation = math.deg(math.atan2(difference.Y, difference.X))
     segment.BackgroundColor3 = color
-    segment.BackgroundTransparency = 1 - settings.espOpacity / 100
+    segment.BackgroundTransparency = settings.espStyle == 1 and (1 - settings.espOpacity / 100) or math.max(.48, 1 - settings.espOpacity / 100)
     segment.Visible = true
 end
 local function project(camera, position)
@@ -3310,6 +3531,7 @@ end
 local markersByModel = {}
 local orderedMarkers = {}
 local function destroyMarker(marker)
+    if marker.screen.healthTween then marker.screen.healthTween:Cancel() end
     marker.screen.container:Destroy()
     marker.highlight:Destroy()
 end
@@ -3347,8 +3569,8 @@ local function updateMarkers(camera)
                     if isFriend(owner) then color = Color3.fromRGB(85, 235, 150) end
                     marker.highlight.FillColor = color
                     marker.highlight.OutlineColor = color
-                    marker.highlight.FillTransparency = 1 - settings.fillOpacity / 100
-                    marker.highlight.OutlineTransparency = 1 - settings.espOpacity / 100
+                    marker.highlight.FillTransparency = settings.espStyle == 1 and (1 - settings.fillOpacity / 100) or math.max(.94, 1 - settings.fillOpacity / 100)
+                    marker.highlight.OutlineTransparency = settings.espStyle == 1 and (1 - settings.espOpacity / 100) or math.max(.38, 1 - settings.espOpacity / 100)
                     marker.highlight.Enabled = not menu.Visible and settings.chams
                     marker.highlight.DepthMode = settings.through
                         and Enum.HighlightDepthMode.AlwaysOnTop or Enum.HighlightDepthMode.Occluded
@@ -4444,6 +4666,7 @@ RunService:BindToRenderStep(renderName, Enum.RenderPriority.Last.Value + 1, func
     local camera = workspace.CurrentCamera
     controlRows.musicIsland.step(dt)
     updateHud(dt)
+    controlRows.friends.step(dt)
     controlRows.studio.step()
     updateWinter(dt)
     soulFx.step(dt)
