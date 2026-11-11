@@ -53,10 +53,14 @@ class WindowsMedia:
         playback = session.get_playback_info()
         controls = playback.controls
         timeline = session.get_timeline_properties()
+        end = getattr(timeline, 'end_time', None)
+        duration_ms = max(0, int(end.total_seconds() * 1000)) if end is not None else 0
+        position_ms = max(0, int(timeline.position.total_seconds() * 1000))
         return {'connected': True, 'source': session.source_app_user_model_id,
                 'title': str(properties.title or '')[:200], 'artist': str(properties.artist or '')[:200],
                 'playing': int(playback.playback_status) == 4,
-                'position_ms': max(0, int(timeline.position.total_seconds() * 1000)),
+                'position_ms': position_ms, 'duration_ms': duration_ms,
+                'position_available': duration_ms > 0 or position_ms > 0,
                 'controls': {name: bool(getattr(controls, 'is_' + name + '_enabled', False))
                              for name in ('play', 'pause', 'stop', 'next', 'previous', 'playback_position')}}
 
