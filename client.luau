@@ -2226,27 +2226,86 @@ local function visualCopy(source, parent)
     copy.Parent = parent
     return copy
 end
-local function rebuildPreview(character)
-    if previewWorld then previewWorld:Destroy() end
-    previewCenter = nil
-    previewWorld = create("WorldModel", preview)
-    local model = create("Model", previewWorld)
-    if not character then return end
-    for _, child in ipairs(character:GetChildren()) do
-        if child:IsA("BasePart") or child:IsA("Model") or child:IsA("Accessory") then
-            visualCopy(child, model)
+do
+local function initializeLiveInspector()
+    local api={parts={},bones={},elapsed=0,scan=0}
+    api.clear=function() table.clear(api.parts); table.clear(api.bones); api.character=nil; api.root=nil end
+    local function sync()
+        local root=api.root
+        if not root or not root.Parent then return end
+        local front=CFrame.Angles(0,math.pi,0)
+        for _,pair in ipairs(api.parts) do
+            if pair.source.Parent and pair.copy.Parent then
+                pair.copy.CFrame=front*root.CFrame:ToObjectSpace(pair.source.CFrame)
+                pair.copy.Transparency=pair.source.Transparency
+                pair.copy.LocalTransparencyModifier=0
+            else api.needsRebuild=true end
+        end
+        for _,pair in ipairs(api.bones) do
+            if pair.source.Parent and pair.copy.Parent then pair.copy.Transform=pair.source.Transform end
         end
     end
-    if not model:FindFirstChildWhichIsA("BasePart", true) then return end
-    local root = model:FindFirstChild("HumanoidRootPart")
-    if root and root:IsA("BasePart") then
-        model.PrimaryPart = root
-        model:PivotTo(CFrame.Angles(0, math.pi, 0))
+    api.build=function(character)
+        api.clear(); api.needsRebuild=false
+        if previewWorld then previewWorld:Destroy() end
+        previewCenter=nil
+        previewWorld=create("WorldModel",preview)
+        if not character then return end
+        local root=character:FindFirstChild("HumanoidRootPart") or character.PrimaryPart
+        if not root or not root:IsA("BasePart") then return end
+        local model=visualCopy(character,previewWorld)
+        if not model then return end
+        -- Manual pose mirroring owns the clone. No cloned animation/physics,
+        -- particle/audio logic, nor joints with references outside the viewport.
+        for _,object in ipairs(model:GetDescendants()) do
+            if object:IsA("JointInstance") or object:IsA("Constraint") or object:IsA("Animator") or object:IsA("Sound") then object:Destroy()
+            elseif object:IsA("ParticleEmitter") or object:IsA("Trail") or object:IsA("Beam") then object.Enabled=false
+            elseif object:IsA("Humanoid") then object.DisplayDistanceType=Enum.HumanoidDisplayDistanceType.None end
+        end
+        local function match(source,copy,depth)
+            if depth>16 or #api.parts>=320 then return end
+            if source:IsA("BasePart") and copy:IsA("BasePart") then table.insert(api.parts,{source=source,copy=copy})
+            elseif source:IsA("Bone") and copy:IsA("Bone") then table.insert(api.bones,{source=source,copy=copy}) end
+            local byName={}
+            for _,child in ipairs(copy:GetChildren()) do
+                local key=child.Name.."/"..child.ClassName
+                byName[key]=byName[key] or {}; table.insert(byName[key],child)
+            end
+            local used={}
+            for _,child in ipairs(source:GetChildren()) do
+                local key=child.Name.."/"..child.ClassName
+                used[key]=(used[key] or 0)+1
+                local target=byName[key] and byName[key][used[key]]
+                if target then match(child,target,depth+1) end
+            end
+        end
+        match(character,model,0)
+        api.character,api.root=character,root
+        api.count=#character:GetDescendants()
+        sync()
+        if #api.parts==0 then return end
+        local cf,size=model:GetBoundingBox()
+        previewCenter,previewRadius=cf.Position,math.max(size.X,size.Y,size.Z,2)*2.1
+        previewCamera.CFrame=CFrame.lookAt(previewCenter+Vector3.new(0,size.Y*.08,previewRadius),previewCenter)
     end
-    local cf, size = model:GetBoundingBox()
-    previewCenter, previewRadius = cf.Position, math.max(size.X, size.Y, size.Z, 2) * 2.1
-    previewCamera.CFrame = CFrame.lookAt(previewCenter + Vector3.new(0, size.Y * 0.08, previewRadius), previewCenter)
+    api.step=function(dt)
+        if not inspector.Visible or not api.character then return end
+        if inspectTarget and inspectTarget.Character~=api.character then api.needsRebuild=true; return end
+        api.elapsed+=dt; api.scan+=dt
+        if api.elapsed<1/(settings.lowFx and 15 or 30) then return end
+        api.elapsed=0; sync()
+        if api.scan>=1 then
+            api.scan=0
+            if #api.character:GetDescendants()~=api.count then api.needsRebuild=true end
+        end
+    end
+    table.insert(cleanups,api.clear)
+    return api
 end
+controlRows.inspectorLive=initializeLiveInspector()
+end
+local function rebuildPreview(character) controlRows.inspectorLive.build(character) end
+
 do
 local function initializeInventoryArt()
     local api={pending={},epoch=0}
@@ -2304,9 +2363,10 @@ local function initializeInventoryArt()
         end
     end
     local function viewport(card,item,character)
-        local candidates={source(item)}
+        local candidates={}
         local equipped=character and character:FindFirstChild(item.Name)
         if equipped then table.insert(candidates,equipped) end
+        table.insert(candidates,source(item))
         local catalog=game:GetService("ReplicatedStorage"):FindFirstChild("ItemsList")
         local catalogItem=catalog and catalog:FindFirstChild(item.Name)
         if catalogItem then table.insert(candidates,catalogItem) end
@@ -2318,19 +2378,29 @@ local function initializeInventoryArt()
             end
         end
         for _,model in ipairs(candidates) do
-            if model and (model:IsA("BasePart") or model:FindFirstChildWhichIsA("BasePart",true)) and #model:GetDescendants()<=180 then
+            if model and (model:IsA("BasePart") or model:FindFirstChildWhichIsA("BasePart",true)) and #model:GetDescendants()<=320 then
+                local frame
                 local ok,drawn=pcall(function()
-                    local frame=create("ViewportFrame",card,{Name="ItemModel",BackgroundTransparency=1,Position=UDim2.fromOffset(8,3),Size=UDim2.new(1,-16,0,53),Ambient=Color3.fromRGB(190,205,215),LightColor=Color3.fromRGB(235,245,255),LightDirection=Vector3.new(-1,-1,-1)})
+                    frame=create("ViewportFrame",card,{Name="ItemModel",BackgroundTransparency=1,Position=UDim2.fromOffset(8,3),Size=UDim2.new(1,-16,0,53),Ambient=Color3.fromRGB(190,205,215),LightColor=Color3.fromRGB(235,245,255),LightDirection=Vector3.new(-1,-1,-1)})
                     local world=create("WorldModel",frame)
                     local wrapper=create("Model",world)
                     local copy=visualCopy(model,wrapper)
                     if not copy then frame:Destroy(); return false end
+                    for _,part in ipairs(copy:GetDescendants()) do
+                        if part:IsA("BasePart") then
+                            part.LocalTransparencyModifier=0
+                            if part.Transparency>=.99 then part:Destroy() end
+                        end
+                    end
+                    if copy:IsA("BasePart") then copy.LocalTransparencyModifier=0 end
+                    if not wrapper:FindFirstChildWhichIsA("BasePart",true) then frame:Destroy(); return false end
                     local cf,size=wrapper:GetBoundingBox()
                     local radius=math.max(size.X,size.Y,size.Z,.5)*1.9
                     frame.CurrentCamera=create("Camera",frame,{FieldOfView=35,CFrame=CFrame.lookAt(cf.Position+Vector3.new(radius*.18,radius*.12,radius),cf.Position)})
                     return true
                 end)
                 if ok and drawn then return true end
+                if frame and frame.Parent then frame:Destroy() end
             end
         end
         return false
@@ -2340,18 +2410,19 @@ local function initializeInventoryArt()
         reference=reference or item
         local durability,maximum=reference:GetAttribute("Durability"),reference:GetAttribute("MaxDurability")
         if type(durability)=="number" and type(maximum)=="number" and maximum>0 then
-            local track=create("Frame",card,{Name="ItemDurability",Position=UDim2.new(0,10,0,52),Size=UDim2.new(1,-20,0,2),BackgroundColor3=palette.control,BorderSizePixel=0})
-            rounded(track,2)
-            local fill=create("Frame",track,{Size=UDim2.fromScale(math.clamp(durability/maximum,0,1),1),BackgroundColor3=palette.accent,BorderSizePixel=0}); rounded(fill,2)
+            local percent=math.round(math.clamp(durability/maximum,0,1)*100)
+            local chip=text(card,"COND "..percent.."%",{Name="ItemCondition",Position=UDim2.new(1,-68,0,4),Size=UDim2.fromOffset(62,16),TextSize=8,TextColor3=Color3.fromRGB(188,211,190),BackgroundColor3=palette.background,BackgroundTransparency=.15,ZIndex=4})
+            rounded(chip,5)
         end
         local fallback=text(card,"",{Name="ArtStatus",Position=UDim2.fromOffset(8,8),Size=UDim2.new(1,-16,0,36),TextSize=10,TextColor3=palette.muted})
         local id=api.image(item)
         local function modelFallback()
             if not card.Parent then return end
-            fallback.Text=viewport(card,item,character) and "" or "NO PREVIEW"
+            local existing=card:FindFirstChild("ItemModel")
+            fallback.Text=(existing and existing.CurrentCamera or viewport(card,item,character)) and "" or "NO PREVIEW"
         end
         if not id then modelFallback(); return end
-        fallback.Text="LOADING"
+        modelFallback()
         local image=create("ImageLabel",card,{Name="ItemIcon",BackgroundTransparency=1,Image=id,ImageTransparency=1,ScaleType=Enum.ScaleType.Fit,Position=UDim2.fromOffset(10,4),Size=UDim2.new(1,-20,0,50)})
         local entry={card=card,image=image,fallback=fallback,age=0,failed=false,model=modelFallback,epoch=api.epoch}
         table.insert(api.pending,entry)
@@ -2369,6 +2440,7 @@ local function initializeInventoryArt()
                 entry.age+=dt
                 if entry.image.IsLoaded then
                     entry.fallback.Text=""
+                    local model=entry.card:FindFirstChild("ItemModel"); if model then model.Visible=false end
                     if settings.motion and not settings.lowFx then TweenService:Create(entry.image,TweenInfo.new(.22),{ImageTransparency=0}):Play() else entry.image.ImageTransparency=0 end
                     table.remove(api.pending,i)
                 elseif entry.failed or entry.age>3 then
@@ -2459,8 +2531,9 @@ local function updateInventoryCards()
         end
     end
     local currentPreview = table.concat(equipment, "|")
-    if previewSignature ~= currentPreview then
+    if previewSignature ~= currentPreview or controlRows.inspectorLive.needsRebuild then
         if type(inspectTarget)=="table" and inspectTarget.Container then
+            controlRows.inspectorLive.clear()
             if previewWorld then previewWorld:Destroy(); previewWorld=nil end
             previewCenter=nil
         else rebuildPreview(inspectTarget.Character) end
@@ -2510,6 +2583,7 @@ connect(inspector:GetPropertyChangedSignal("Visible"), function()
     if inspector.Visible then
         updateInventoryCards()
     else
+        controlRows.inspectorLive.clear()
         controlRows.inventoryArt.clear()
         for _, card in ipairs(cards) do card:Destroy() end
         table.clear(cards)
@@ -2564,12 +2638,6 @@ local function initializeHudMotion()
     api.step=function(dt)
         api.clock+=dt; api.elapsed+=dt
         api.previewElapsed+=dt
-        if api.previewElapsed>=1/30 then
-            api.previewElapsed=0
-            if inspector.Visible and previewCenter and settings.motion and not settings.lowFx then
-                previewCamera.CFrame=CFrame.lookAt(previewCenter+Vector3.new(math.sin(api.clock*.35)*previewRadius*.15,previewRadius*.04,previewRadius),previewCenter)
-            end
-        end
         logo.Visible=islandBrand.Visible
         logoRim.Color,divider.BackgroundColor3,titleLine.BackgroundColor3=palette.accent,palette.accent,palette.accent
         divider.Visible=islandExpanded
@@ -2609,6 +2677,7 @@ end
 
 controlRows.hudTiming={inventory=1,hud=1}
 local function updateHud(dt)
+    controlRows.inspectorLive.step(dt)
     controlRows.inventoryArt.step(dt)
     controlRows.hudMotion.step(dt)
     controlRows.release.step(dt)
@@ -4168,10 +4237,10 @@ local function initializeWinter()
                             local parts = {}
                             for index = 1, 18 do
                                 parts[index] = create("Part", model, {
-                                    Shape = index == 18 and Enum.PartType.Ball or Enum.PartType.Cylinder, Anchored = true,
+                                    Shape = index == 1 and Enum.PartType.Cylinder or Enum.PartType.Ball, Anchored = true,
                                     CanCollide = false, CanTouch = false, CanQuery = false,
-                                    CastShadow = false, Material = Enum.Material.SmoothPlastic,
-                                    Color = (index == 1 or index == 18) and Color3.fromRGB(245, 245, 250) or Color3.fromRGB(195, 45, 66),
+                                    CastShadow = false, Material = Enum.Material.Fabric,
+                                    Color = (index == 1 or index >= 9) and Color3.fromRGB(246, 240, 233) or Color3.fromRGB(176, 28, 52),
                                     Size = Vector3.new(1, 1, 1),
                                 })
                             end
@@ -4205,13 +4274,17 @@ local function initializeWinter()
                         part.Size=Vector3.new(.22,head.Size.Z*1.42,head.Size.X*1.42)
                         part.CFrame=head.CFrame*CFrame.new(0,head.Size.Y/2+.15,0)*CFrame.Angles(0,0,math.pi/2)
                     elseif index==18 then
-                        part.Size=Vector3.new(.3,.3,.3)
-                        part.CFrame=head.CFrame*CFrame.new(.32,head.Size.Y/2+1.34,0)
+                        part.Size=Vector3.new(.34,.34,.34)
+                        part.CFrame=head.CFrame*CFrame.new(.96,head.Size.Y/2+.62,0)
+                    elseif index>=9 then
+                        local angle=(index-9)*math.pi*2/9
+                        part.Size=Vector3.new(.28,.28,.28)
+                        part.CFrame=head.CFrame*CFrame.new(math.cos(angle)*head.Size.X*.64,head.Size.Y/2+.16,math.sin(angle)*head.Size.Z*.64)
                     else
-                        local t=(index-2)/15
-                        local taper=1.28*(1-t)+.06
-                        part.Size=Vector3.new(.085,head.Size.Z*taper,head.Size.X*taper)
-                        part.CFrame=head.CFrame*CFrame.new(t*t*.32,head.Size.Y/2+.28+t,0)*CFrame.Angles(0,0,math.pi/2)
+                        local t=(index-2)/6
+                        local width=1.23*(1-t)^.8+.1
+                        part.Size=Vector3.new(head.Size.X*width,.62-.36*t,head.Size.Z*width)
+                        part.CFrame=head.CFrame*CFrame.new(.95*t*t,head.Size.Y/2+.46+1.35*t-1.1*t*t*t,0)*CFrame.Angles(0,0,-.42*t)
                     end
                 end
             end
