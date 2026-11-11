@@ -1,18 +1,52 @@
 -- Oktan authenticated loader. Keys stay in memory and are never sent to the renewal URL.
 local RENEW_URL = "https://funpay.com/users/15095530/"
-local CLIENT_URL = "https://raw.githubusercontent.com/barmunddd/Oktan/dd80d793bfe118677f494f108eead0fb9b463efa/client.luau"
+local CLIENT_URL = "https://raw.githubusercontent.com/barmunddd/Oktan/a8406a749f9d1ac4228eda4a025815ce7fab33ef/client.luau"
 local env = getgenv()
 local playerGui = game:GetService("Players").LocalPlayer:WaitForChild("PlayerGui")
-local ui = Instance.new("ScreenGui")
-ui.Name, ui.ResetOnSpawn, ui.DisplayOrder, ui.Parent = "OktanStartup", false, 10000, playerGui
-local label = Instance.new("TextLabel")
-label.Size, label.Position = UDim2.fromOffset(540, 110), UDim2.new(0.5, -270, 0, 70)
-label.BackgroundColor3, label.TextColor3 = Color3.fromRGB(18, 22, 30), Color3.fromRGB(235, 240, 255)
-label.TextSize, label.TextWrapped, label.Text, label.Parent = 15, true, "Oktan: проверка ключа...", ui
-local corner = Instance.new("UICorner"); corner.CornerRadius, corner.Parent = UDim.new(0, 14), label
-local function stage(message)
-    if label.Parent then label.Text = "Oktan: " .. message end
+local function makeStartup(name)
+    local function add(class,parent,properties)
+        local object=Instance.new(class)
+        for key,value in pairs(properties or {}) do object[key]=value end
+        object.Parent=parent; return object
+    end
+    local screen=add("ScreenGui",playerGui,{Name=name,ResetOnSpawn=false,DisplayOrder=10000})
+    local card=add("Frame",screen,{Name="StudioAccess",Size=UDim2.fromOffset(480,230),Position=UDim2.new(.5,-240,.22,0),BackgroundColor3=Color3.fromRGB(8,13,18),BackgroundTransparency=.04,BorderSizePixel=0})
+    add("UICorner",card,{CornerRadius=UDim.new(0,22)})
+    add("UIStroke",card,{Color=Color3.fromRGB(190,230,125),Transparency=.55,Thickness=1})
+    local fit=add("UIScale",card,{Scale=1})
+    pcall(function() card.AnchorPoint=Vector2.new(.5,0); card.Position=UDim2.new(.5,0,.22,0) end)
+    pcall(function()
+        local camera=workspace.CurrentCamera
+        if camera then fit.Scale=math.min(1,(camera.ViewportSize.X-24)/480,(camera.ViewportSize.Y-24)/300) end
+    end)
+    local function text(value,position,size,color,fontSize)
+        local object=add("TextLabel",card,{Text=value,Position=position,Size=size,BackgroundTransparency=1,TextColor3=color,TextSize=fontSize,TextWrapped=true,BorderSizePixel=0})
+        pcall(function() object.Font=Enum.Font.Gotham; object.TextXAlignment=Enum.TextXAlignment.Left end)
+        return object
+    end
+    local accent=Color3.fromRGB(192,235,125)
+    local mark=add("Frame",card,{Position=UDim2.fromOffset(25,26),Size=UDim2.fromOffset(22,22),Rotation=-14,BackgroundTransparency=1,BorderSizePixel=0})
+    add("UICorner",mark,{CornerRadius=UDim.new(0,7)}); add("UIStroke",mark,{Color=accent,Thickness=3})
+    text("OKTAN",UDim2.fromOffset(60,18),UDim2.fromOffset(180,28),Color3.fromRGB(238,245,249),20)
+    text("STUDIO / ACCESS",UDim2.fromOffset(61,45),UDim2.fromOffset(250,18),Color3.fromRGB(135,155,170),9)
+    local status=text("Проверяем ключ…",UDim2.fromOffset(25,82),UDim2.fromOffset(430,60),Color3.fromRGB(227,237,244),14)
+    local track=add("Frame",card,{Position=UDim2.fromOffset(25,160),Size=UDim2.new(1,-50,0,3),BackgroundColor3=Color3.fromRGB(34,46,54),BorderSizePixel=0,ClipsDescendants=true})
+    add("UICorner",track,{CornerRadius=UDim.new(0,3)})
+    local beam=add("Frame",track,{Size=UDim2.new(.24,0,1,0),BackgroundColor3=accent,BorderSizePixel=0})
+    local foot=text("VERIFY     /     DOWNLOAD     /     LAUNCH",UDim2.fromOffset(25,183),UDim2.fromOffset(430,22),Color3.fromRGB(135,155,170),9)
+    local animation
+    pcall(function()
+        animation=game:GetService("TweenService"):Create(beam,TweenInfo.new(1.2,Enum.EasingStyle.Sine,Enum.EasingDirection.InOut,-1,true),{Position=UDim2.new(.76,0,0,0)})
+        animation:Play()
+    end)
+    if screen.AncestryChanged then screen.AncestryChanged:Connect(function() if not screen.Parent and animation then animation:Cancel() end end) end
+    return screen,status,{card=card,track=track,beam=beam,foot=foot,stop=function() if animation then animation:Cancel() end end}
 end
+local ui,label,startup=makeStartup("OktanStartup")
+local function stage(message)
+    if label.Parent then label.Text=message end
+end
+
 local function openRenewal(copyFallback)
     if type(openurl) == "function" then
         local ok, result = pcall(openurl, RENEW_URL)
@@ -25,39 +59,31 @@ local function openRenewal(copyFallback)
     return "Открой ссылку FunPay вручную: " .. RENEW_URL
 end
 local function accessNotice(state, automatic)
-    if not ui.Parent then
-        ui = Instance.new("ScreenGui")
-        ui.Name, ui.ResetOnSpawn, ui.DisplayOrder, ui.Parent = "OktanRenewal", false, 10000, playerGui
-        label = Instance.new("TextLabel")
-        label.Size, label.Position = UDim2.fromOffset(540, 160), UDim2.new(0.5, -270, 0.35, -80)
-        label.BackgroundColor3, label.TextColor3 = Color3.fromRGB(18, 22, 30), Color3.fromRGB(235, 240, 255)
-        label.TextSize, label.TextWrapped, label.Parent = 15, true, ui
-        local edge = Instance.new("UICorner"); edge.CornerRadius, edge.Parent = UDim.new(0, 14), label
-    end
-    label.Size = UDim2.fromOffset(540, 160)
-    label.Position = UDim2.new(0.5, -270, 0.35, -80)
-    local titles = { expired = "Срок ключа истёк", revoked = "Ключ отозван", invalid = "Ключ не найден", inactive = "Ключ больше не действует", unavailable = "Не удалось подтвердить подписку" }
-    label.Text = (titles[state] or titles.inactive) .. "\n" .. RENEW_URL .. "\nКлюч и данные аккаунта не передаются в FunPay."
-    if automatic and state == "expired" then
-        local last = env.OktanRenewalOpenedAt
-        if type(last) ~= "number" or os.clock() - last > 60 then
-            env.OktanRenewalOpenedAt = os.clock()
-            local result = openRenewal(false)
-            label.Text ..= "\n" .. result
+    if not ui.Parent then ui,label,startup=makeStartup("OktanRenewal") end
+    startup.stop(); startup.track.Visible=false
+    startup.card.Size=UDim2.fromOffset(480,300)
+    startup.foot.Visible=false
+    label.Size=UDim2.fromOffset(430,118)
+    label.TextColor3=state=="unavailable" and Color3.fromRGB(227,237,244) or Color3.fromRGB(255,191,145)
+    local titles={expired="Срок ключа истёк",revoked="Ключ отозван",invalid="Ключ не найден",inactive="Ключ больше не действует",unavailable="Не удалось подтвердить подписку"}
+    label.Text=(titles[state] or titles.inactive).."\n"..RENEW_URL.."\nКлюч и данные аккаунта не передаются в FunPay."
+    if automatic and state=="expired" then
+        local last=env.OktanRenewalOpenedAt
+        if type(last)~="number" or os.clock()-last>60 then
+            env.OktanRenewalOpenedAt=os.clock()
+            label.Text ..= "\n"..openRenewal(false)
         end
     end
-    local renew = Instance.new("TextButton")
-    renew.Size, renew.Position = UDim2.fromOffset(230, 36), UDim2.new(0.5, -240, 0.35, 96)
-    renew.Text, renew.Parent = "FunPay / Copy link", ui
-    renew.BackgroundColor3, renew.TextColor3, renew.TextSize, renew.BorderSizePixel = Color3.fromRGB(38, 48, 31), Color3.fromRGB(210, 255, 135), 14, 0
-    local renewCorner = Instance.new("UICorner"); renewCorner.CornerRadius, renewCorner.Parent = UDim.new(0, 12), renew
-    renew.Activated:Connect(function() label.Text = (titles[state] or titles.inactive) .. "\n" .. openRenewal(true) end)
-    local close = Instance.new("TextButton")
-    close.Size, close.Position = UDim2.fromOffset(230, 36), UDim2.new(0.5, 10, 0.35, 96)
-    close.Text, close.Parent = "Закрыть", ui
-    close.BackgroundColor3, close.TextColor3, close.TextSize, close.BorderSizePixel = Color3.fromRGB(28, 33, 43), Color3.fromRGB(220, 227, 240), 14, 0
-    local closeCorner = Instance.new("UICorner"); closeCorner.CornerRadius, closeCorner.Parent = UDim.new(0, 12), close
-    close.Activated:Connect(function() ui:Destroy() end)
+    for index,name in ipairs({"FunPay / Copy link","Закрыть"}) do
+        local control=Instance.new("TextButton")
+        control.Size,control.Position=UDim2.fromOffset(208,38),UDim2.fromOffset(25+(index-1)*222,238)
+        control.Text,control.Parent=name,startup.card
+        control.BackgroundColor3,control.TextColor3,control.TextSize,control.BorderSizePixel=Color3.fromRGB(25,38,44),Color3.fromRGB(210,238,165),13,0
+        local corner=Instance.new("UICorner"); corner.CornerRadius,corner.Parent=UDim.new(0,12),control
+        control.Activated:Connect(function()
+            if index==1 then label.Text=(titles[state] or titles.inactive).."\n"..openRenewal(true) else startup.stop(); ui:Destroy() end
+        end)
+    end
 end
 local function boot()
     local key = env.Key
@@ -104,7 +130,8 @@ local function boot()
         key = nil
         accessNotice(state, state == "expired")
     end
-    stage("Ключ принят. Загрузка клиента...")
+    stage("Ключ принят. Загрузка клиента…")
+    startup.foot.Text="VERIFIED     /     DOWNLOADING"
     local fetched, source = pcall(function() return game:HttpGet(CLIENT_URL) end)
     if not fetched or type(source) ~= "string" or #source == 0 then session.cancel(); error("Не удалось загрузить клиент", 0) end
     local program, compileError = loadstring(source)
@@ -119,7 +146,8 @@ local function boot()
     local old = env.OktanLicenseSession
     if type(old) == "table" and type(old.cancel) == "function" then old.cancel() end
     env.OktanLicenseSession = session
-    stage("Запуск клиента...")
+    stage("Запуск клиента…")
+    startup.foot.Text="VERIFIED     /     DOWNLOADED     /     LAUNCHING"
     local started, startError = pcall(program, session)
     if not started then session.cancel(); error(tostring(startError), 0) end
     task.spawn(function()
@@ -153,5 +181,8 @@ local finished = false
 task.delay(20, function() if not finished and ui.Parent then stage("Ожидаем ответ сервера. Проверь консоль исполнителя.") end end)
 local ok, result = pcall(boot)
 finished = true
-if ok and result == true then ui:Destroy()
-elseif not ok then stage(tostring(result)); warn("[Oktan] Startup failed: " .. tostring(result)) end
+if ok and result == true then
+    startup.stop(); startup.beam.Position=UDim2.new(0,0,0,0); startup.beam.Size=UDim2.new(1,0,1,0)
+    stage("Готово. Приятной игры!"); startup.foot.Text="ACCESS VERIFIED / CLIENT READY"
+    local closing=ui; task.delay(.2,function() closing:Destroy() end)
+elseif not ok then startup.stop(); label.TextColor3=Color3.fromRGB(255,165,165); startup.foot.Text="STARTUP FAILED"; stage(tostring(result)); warn("[Oktan] Startup failed: " .. tostring(result)) end
