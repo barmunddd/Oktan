@@ -1350,9 +1350,10 @@ local function initializeStudioSkin()
     controlRows.subscription.badge.Size=UDim2.fromOffset(222,30)
     local studio=button(menu,"Studio",UDim2.fromOffset(413,19),UDim2.fromOffset(44,30))
     studio.TextSize=10; studio.TextColor3=Color3.fromRGB(205,245,145)
-    describe(studio,"Применить лаймовую тему с обложек OKTAN. Остальные настройки сохранятся.")
+    describe(studio,"Оформление с обложек: лайм, стекло, Bubbles и Motion. Выключает Light Menu; игровые настройки не меняет.")
     connect(studio.Activated,function()
         settings.menuSaturation,settings.menuValue=55,96
+        settings.bubbles,settings.skinTextures,settings.motion,settings.lowFx=true,true,true,false
         setValue("menuHue",78)
     end)
     api.clearNodes=function() table.clear(nodes) end
