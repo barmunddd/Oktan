@@ -1698,7 +1698,7 @@ connect(Input.InputBegan, function(input, processed)
     end
     if processed or not focused then return end
     if name == bindings.menu then setMenu(not menu.Visible); return end
-    if menu.Visible then return end
+    if menu.Visible or (controlRows.mapOverlay and controlRows.mapOverlay.isOpen()) then return end
     if name == bindings.friendPick then controlRows.friends.pick(); return end
     if name == bindings.containerDump then exportContainer(); return end
     if name == bindings.aim or name == bindings.zoom then return end
@@ -3868,7 +3868,7 @@ local function renderScreenMarker(marker, camera, color)
     local screen = marker.screen
     screen.used = 0
     local candidate = marker.candidate
-    local enabled = settings.esp and not menu.Visible and camera and candidate and candidate.model:IsDescendantOf(workspace)
+    local enabled = settings.esp and not settings._mapOpen and not menu.Visible and camera and candidate and candidate.model:IsDescendantOf(workspace)
         and candidate.root:IsDescendantOf(workspace) and candidate.humanoid.Health > 0
         and (settings.through or not marker.occluded)
     enabled = enabled and (settings.names or settings.health or settings.distance or settings.weapon
@@ -3992,7 +3992,7 @@ local function updateMarkers(camera)
                     marker.highlight.OutlineColor = color
                     marker.highlight.FillTransparency = settings.espStyle == 1 and (1 - settings.fillOpacity / 100) or math.max(.94, 1 - settings.fillOpacity / 100)
                     marker.highlight.OutlineTransparency = settings.espStyle == 1 and (1 - settings.espOpacity / 100) or math.max(.38, 1 - settings.espOpacity / 100)
-                    marker.highlight.Enabled = not menu.Visible and settings.chams
+                    marker.highlight.Enabled = not settings._mapOpen and not menu.Visible and settings.chams
                     marker.highlight.DepthMode = settings.through
                         and Enum.HighlightDepthMode.AlwaysOnTop or Enum.HighlightDepthMode.Occluded
                 end
@@ -4305,7 +4305,9 @@ local function initializeCameraVisuals()
     local fov = {}
     local traceElapsed = 0
     settings._cameraTrace = {}
+    local function mapOpen() return controlRows.mapOverlay and controlRows.mapOverlay.isOpen() or false end
     local function adsInput()
+        if mapOpen() then return false end
         return settings._ads or (focused and not menu.Visible and Input:GetFocusedTextBox() == nil and Input:IsMouseButtonPressed(Enum.UserInputType.MouseButton2))
     end
     local function restoreFov(preservePresentation)
@@ -4316,11 +4318,13 @@ local function initializeCameraVisuals()
         table.clear(fov)
     end
     local function applyFov(camera, desired, dt)
+        if mapOpen() then restoreFov(false); return end
         if fov.camera ~= camera or not desired then restoreFov(adsInput()) end
         if not camera or not desired then return end
         if not fov.camera then
             fov.camera, fov.native = camera, camera.FieldOfView
             fov.connection = camera:GetPropertyChangedSignal("FieldOfView"):Connect(function()
+                if mapOpen() then restoreFov(true); return end
                 if not fov.writing and fov.camera == camera and camera.FieldOfView ~= fov.applied then
                     fov.native = camera.FieldOfView
                     -- Keep equip/sprint FOV writes out of the rendered projection.
@@ -4496,6 +4500,16 @@ local updateVegetation = initializeVegetation()
         end
     end)
     connect(RunService.PreSimulation, function(dt)
+        if mapOpen() then
+            blend=0
+            for _,entry in pairs(viewmodels) do
+                for joint,pose in pairs(entry.joints or {}) do
+                    if pose.applied and joint.Parent and joint.Transform==pose.applied then joint.Transform=pose.original end
+                    pose.applied=nil
+                end
+            end
+            return
+        end
         local camera = workspace.CurrentCamera
         local target = settings.viewmodel and not adsInput() and 1 or 0
         blend += (target - blend) * math.min(1, dt / 0.1)
@@ -4702,7 +4716,7 @@ local function initializeLootESP()
             if not object.Parent or not mark.part.Parent then clear(object)
             else
                 local distance = camera and (mark.part.Position - camera.CFrame.Position).Magnitude or math.huge
-                mark.gui.Enabled = not menu.Visible and distance <= settings.lootRange
+                mark.gui.Enabled = not settings._mapOpen and not menu.Visible and distance <= settings.lootRange
                     and (mark.kind == "corpse" and settings.corpseEsp or mark.kind == "item" and settings.itemEsp or mark.kind=="container" and (settings.containerEsp or settings.auroraEsp and mark.aurora))
                 mark.gui.AlwaysOnTop = settings.lootThrough
                 mark.label.TextSize = settings.lootTextSize
@@ -5101,10 +5115,15 @@ end)
 do
 local function initializeMapOverlay()
     local api={elapsed=1,marks={},state="Off"}
-    local host,container
+    local host,container,origin
     local function clear()
         if host then host:Destroy() end
+        if origin then origin.Visible=false end
         host,container=nil,nil; table.clear(api.marks)
+    end
+    local function hide()
+        if host then host.Visible=false end
+        if origin then origin.Visible=false end
     end
     local function shown(object)
         while object and object~=playerGui do
@@ -5114,6 +5133,26 @@ local function initializeMapOverlay()
         end
         return true
     end
+    api.isOpen=function()
+        local mainGui=playerGui:FindFirstChild("MainGui")
+        local main=mainGui and mainGui:FindFirstChild("MainFrame")
+        local frame=main and main:FindFirstChild("MapFrame")
+        return frame~=nil and shown(frame)
+    end
+    api.surface=function(surface)
+        local left,top,right,bottom=math.huge,math.huge,-math.huge,-math.huge
+        for index=1,4 do
+            local tile=surface:FindFirstChild("S"..index)
+            if not tile or tile.AbsoluteSize.X<=0 or tile.AbsoluteSize.Y<=0 then return nil end
+            left=math.min(left,tile.AbsolutePosition.X); top=math.min(top,tile.AbsolutePosition.Y)
+            right=math.max(right,tile.AbsolutePosition.X+tile.AbsoluteSize.X)
+            bottom=math.max(bottom,tile.AbsolutePosition.Y+tile.AbsoluteSize.Y)
+        end
+        return left,top,right-left,bottom-top
+    end
+    api.anchor=function(marker,left,top,width,height)
+        return Vector2.new((marker.AbsolutePosition.X+marker.AbsoluteSize.X*.5-left)/width,(marker.AbsolutePosition.Y+marker.AbsoluteSize.Y*.5-top)/height)
+    end
     api.project=function(position,mine,anchor,size)
         -- Estonian Border: X on the map follows world Z, Y follows world X.
         -- Anchor to the game's live self marker, not a guessed world origin.
@@ -5122,7 +5161,6 @@ local function initializeMapOverlay()
     api.step=function(dt)
         api.elapsed+=dt
         if not settings.mapPlayers then if host then clear() end; api.state="Off"; return end
-        if api.elapsed<.1 then return end; api.elapsed=0
         local mainGui=playerGui:FindFirstChild("MainGui")
         local main=mainGui and mainGui:FindFirstChild("MainFrame")
         local frame=main and main:FindFirstChild("MapFrame")
@@ -5132,7 +5170,7 @@ local function initializeMapOverlay()
         local maps=map and map:FindFirstChild("Maps")
         local mine=player.Character and player.Character:FindFirstChild("HumanoidRootPart")
         if not frame or not shown(frame) or not maps or not markers or not selfMarker or not mine then
-            if host then host.Visible=false end; api.state="Open map in a raid"; return
+            hide(); api.state="Open map in a raid"; return
         end
         local current
         local worldName=workspace:GetAttribute("MapName")
@@ -5143,18 +5181,25 @@ local function initializeMapOverlay()
         -- Only the exported map orientation is supported. Unknown maps stay empty.
         if worldName~="Estonian Border" or type(size)~="number" or size~=size or size<100 or size>100000
             or not selfMarker.Visible or markers.AbsoluteSize.X<=0 or markers.AbsoluteSize.Y<=0 then
-            if host then host.Visible=false end; api.state="Unsupported map or no self marker"; return
+            hide(); api.state="Unsupported map or no self marker"; return
         end
-        if current.Rotation~=0 or math.abs(current.AbsoluteSize.X-markers.AbsoluteSize.X)>2
-            or math.abs(current.AbsoluteSize.Y-markers.AbsoluteSize.Y)>2 then
-            if host then host.Visible=false end; api.state="Map alignment unavailable"; return
+        local left,top,width,height=api.surface(current)
+        if current.Rotation~=0 or not left or width<=0 or height<=0 then
+            hide(); api.state="Map alignment unavailable"; return
         end
         if not host or not host.Parent or container~=markers then
             clear(); container=markers
-            host=create("Frame",markers,{Name="OktanMapPlayers",Size=UDim2.fromScale(1,1),BackgroundTransparency=1,BorderSizePixel=0,ClipsDescendants=true,ZIndex=15})
+            if not origin then origin=create("Frame",gui,{Name="OktanMapOrigin",Size=UDim2.fromScale(1,1),BackgroundTransparency=1,BorderSizePixel=0,Active=false,Selectable=false,ZIndex=14}) end
+            host=create("Frame",origin,{Name="OktanMapPlayers",BackgroundTransparency=1,BorderSizePixel=0,ClipsDescendants=true,Active=false,Selectable=false,ZIndex=15})
         end
         host.Visible=true
-        local anchor=Vector2.new(selfMarker.Position.X.Scale+selfMarker.Position.X.Offset/markers.AbsoluteSize.X,selfMarker.Position.Y.Scale+selfMarker.Position.Y.Offset/markers.AbsoluteSize.Y)
+        origin.Visible=true
+        -- Geometry follows the actual four image tiles every render frame.
+        -- No objects or input handlers are installed in the game's Markers tree.
+        host.Position=UDim2.fromOffset(left-origin.AbsolutePosition.X,top-origin.AbsolutePosition.Y)
+        host.Size=UDim2.fromOffset(width,height)
+        if api.elapsed<.1 then return end; api.elapsed=0
+        local anchor=api.anchor(selfMarker,left,top,width,height)
         local seen,count={},0
         for _,owner in ipairs(Players:GetPlayers()) do
             local character=owner.Character
@@ -5168,9 +5213,9 @@ local function initializeMapOverlay()
                         count+=1; seen[owner]=true
                         local mark=api.marks[owner]
                         if not mark then
-                            local dot=create("Frame",host,{Name="PlayerDot",AnchorPoint=Vector2.new(.5,.5),Size=UDim2.fromOffset(8,8),BorderSizePixel=0,ZIndex=16})
+                            local dot=create("Frame",host,{Name="PlayerDot",AnchorPoint=Vector2.new(.5,.5),Size=UDim2.fromOffset(8,8),BorderSizePixel=0,Active=false,Selectable=false,ZIndex=16})
                             rounded(dot,8); stroke(dot,Color3.fromRGB(8,17,23),2)
-                            local name=text(dot,owner.Name,{Name="PlayerName",Position=UDim2.fromOffset(12,-7),Size=UDim2.fromOffset(160,22),TextXAlignment=Enum.TextXAlignment.Left,TextSize=11,TextStrokeColor3=Color3.fromRGB(6,12,16),TextStrokeTransparency=.2,ZIndex=17})
+                            local name=text(dot,owner.Name,{Name="PlayerName",Position=UDim2.fromOffset(12,-7),Size=UDim2.fromOffset(160,22),TextXAlignment=Enum.TextXAlignment.Left,TextSize=11,TextStrokeColor3=Color3.fromRGB(6,12,16),TextStrokeTransparency=.2,Active=false,Selectable=false,ZIndex=17})
                             mark={dot=dot,name=name}; api.marks[owner]=mark
                         end
                         local color=friend and Color3.fromRGB(125,239,190) or Color3.fromHSV(settings.espHue/360,settings.espSaturation/100,settings.espValue/100)
@@ -5189,7 +5234,7 @@ local function initializeMapOverlay()
         for owner,mark in pairs(api.marks) do if not seen[owner] then mark.dot:Destroy(); api.marks[owner]=nil end end
         api.state="Estonian Border · "..count.." players"
     end
-    table.insert(cleanups,clear)
+    table.insert(cleanups,function() clear(); if origin then origin:Destroy(); origin=nil end end)
     return api
 end
 controlRows.mapOverlay=initializeMapOverlay()
@@ -5202,6 +5247,8 @@ RunService:BindToRenderStep(renderName, Enum.RenderPriority.Last.Value + 1, func
     controlRows.musicIsland.step(dt)
     updateHud(dt)
     controlRows.mapOverlay.step(dt)
+    settings._mapOpen=controlRows.mapOverlay.isOpen()
+    overlay.Visible=not settings._mapOpen
     controlRows.friends.step(dt)
     controlRows.studio.step()
     updateWinter(dt)
@@ -5260,7 +5307,10 @@ RunService:BindToRenderStep(renderName, Enum.RenderPriority.Last.Value + 1, func
         for _, marker in ipairs(orderedMarkers) do renderScreenMarker(marker, camera, color) end
     end
     if espStarted then renderState.perfEsp += os.clock() - espStarted end
-    local inputReady = focused and not menu.Visible and not capture and Input:GetFocusedTextBox() == nil
+    local mapOpen=controlRows.mapOverlay.isOpen()
+    settings._mapOpen=mapOpen
+    overlay.Visible=not mapOpen
+    local inputReady = focused and not menu.Visible and not mapOpen and not capture and Input:GetFocusedTextBox() == nil
     local records = game:GetService("ReplicatedStorage"):FindFirstChild("Players")
     local record = records and records:FindFirstChild(player.Name)
     local status = record and record:FindFirstChild("Status")
@@ -5268,11 +5318,11 @@ RunService:BindToRenderStep(renderName, Enum.RenderPriority.Last.Value + 1, func
     settings._equipId = variables and variables:GetAttribute("EquipId")
     local equipped = variables and variables:FindFirstChild("EquippedTool")
     local weaponPresent = (equipped and equipped.Value ~= nil) or (variables and (variables:GetAttribute("EquipId") or 0) ~= 0) or (player.Character and heldItem(player.Character) ~= nil)
-    local rightMouse = focused and not menu.Visible and Input:GetFocusedTextBox() == nil and Input:IsMouseButtonPressed(Enum.UserInputType.MouseButton2)
+    local rightMouse = focused and not menu.Visible and not mapOpen and Input:GetFocusedTextBox() == nil and Input:IsMouseButtonPressed(Enum.UserInputType.MouseButton2)
     local function aimingFlag(object)
         return object and (object:GetAttribute("Aiming") == true or object:GetAttribute("ADS") == true or object:GetAttribute("IsAiming") == true)
     end
-    settings._ads = aimingFlag(variables) or aimingFlag(player.Character) or aimingFlag(camera) or (weaponPresent and rightMouse) or false
+    settings._ads = not mapOpen and (aimingFlag(variables) or aimingFlag(player.Character) or aimingFlag(camera) or (weaponPresent and rightMouse)) or false
     local zooming = camera and inputReady and settings.zoom and held("zoom")
     local cameraStarted = perfStarted and os.clock()
     updateCameraVisuals(dt, camera, (not settings._ads) and (zooming and settings.zoomFov or (settings.cameraFov and settings.cameraFovValue or nil)) or nil)
