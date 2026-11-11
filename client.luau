@@ -23,6 +23,7 @@ end
 
 -- Every exposed setting has its own description, bounds and keyboard actions.
 local definitions = {
+    { "skinTextures", true, "Glass Textures", "Объёмное стекло с мягкими бликами и инеем. Отключи для более простого фона; Light Menu также скрывает декор.", "Настройки" },
     { "islandMusic", true, "Music Island", "Музыка в Dynamic Island: плавная смена трека, Pause/Stop и локальные строки LRC. В развёрнутом виде время, киллы и бинды сохраняются.", "Бинды" },
     { "adaptiveEsp", true, "Adaptive ESP", "При большом числе целей снижает частоту только ESP: до 30 обновлений/с после 16 целей и до 20 после 32. Игровой FPS не ограничивает; все цели остаются видимыми.", "Настройки" },
     { "lowFx", false, "Light Menu", "Отключает размытие и фоновые зимние анимации меню. Игровые функции и выбранные цвета не меняет.", "Настройки" },
@@ -284,8 +285,8 @@ local function saveConfig()
 end
 
 local palette = {
-    background = Color3.fromRGB(10, 10, 12), panel = Color3.fromRGB(22, 22, 25),
-    control = Color3.fromRGB(34, 34, 38), edge = Color3.fromRGB(135, 135, 142),
+    background = Color3.fromRGB(8, 13, 18), panel = Color3.fromRGB(15, 23, 30),
+    control = Color3.fromRGB(22, 33, 42), edge = Color3.fromRGB(121, 144, 160),
     accent = Color3.fromRGB(238, 238, 243), text = Color3.fromRGB(240, 240, 243),
     muted = Color3.fromRGB(165, 165, 174),
 }
@@ -360,8 +361,8 @@ local title = text(menu, "OKTAN", {
     Position = UDim2.fromOffset(24, 15), Size = UDim2.fromOffset(480, 32),
     TextSize = 23, Font = Enum.Font.GothamBold, TextXAlignment = Enum.TextXAlignment.Left,
 })
-text(menu, "OKTAN 10   /   ECHO", {
-    Position = UDim2.fromOffset(25, 48), Size = UDim2.fromOffset(450, 18),
+text(menu, "STUDIO   /   WINTER", {
+    Position = UDim2.fromOffset(65, 48), Size = UDim2.fromOffset(340, 18),
     TextColor3 = palette.muted, TextXAlignment = Enum.TextXAlignment.Left,
 })
 local function button(parent, label, position, size)
@@ -1278,6 +1279,119 @@ end
 controlRows.yandex = initializeYandexMusic()
 end
 
+do
+local function initializeStudioSkin()
+    local alive,attempted,loading,asset=true,false,false,nil
+    local nodes={}
+    local textureEnabled=settings.skinTextures
+    local registeredAt
+    local assetPath="OktanAssets/studio-orb-a1465ea6.png"
+    local assetUrl="https://raw.githubusercontent.com/barmunddd/Oktan/49c871741c42f0c6d2e6e86dabcdeda43b53189c/assets/ui/studio-orb-v1.png"
+    settings._skinStatus={texture="idle",mode="procedural"}
+    local function validPng(body)
+        if type(body)~="string" or #body~=1715413 or body:sub(1,8)~="\137PNG\13\10\26\10" then return false end
+        local function integer(at)
+            local a,b,c,d=body:byte(at,at+3)
+            return ((a*256+b)*256+c)*256+d
+        end
+        return integer(17)==1254 and integer(21)==1254
+    end
+    local function fail(reason)
+        if alive then settings._skinStatus={texture=reason,mode="procedural"} end
+    end
+    local api={}
+    api.asset=function()
+        if asset then return asset end
+        if attempted or loading or not settings.skinTextures or settings.lowFx or not menu.Visible then return nil end
+        attempted=true
+        local register=getcustomasset or getsynasset
+        if type(register)~="function" or type(readfile)~="function" or type(writefile)~="function" then fail("local images unavailable"); return nil end
+        loading=true
+        task.spawn(function()
+            local ok,result=pcall(function()
+                local cached,body=pcall(readfile,assetPath)
+                if not cached or not validPng(body) then
+                    body=game:HttpGet(assetUrl)
+                    if not alive then return nil end
+                    if not validPng(body) then error("invalid PNG",0) end
+                    if type(makefolder)=="function" then pcall(makefolder,"OktanAssets") end
+                    writefile(assetPath,body)
+                end
+                if not alive then return nil end
+                local uri=register(assetPath)
+                if type(uri)~="string" or #uri==0 then error("image registration unavailable",0) end
+                return uri
+            end)
+            if not alive then return end
+            loading=false
+            if ok and result then asset=result; registeredAt=os.clock(); settings._skinStatus={texture="registered",mode="waiting for image"}
+            else fail("procedural fallback") end
+        end)
+        return asset
+    end
+    api.loaded=function()
+        if settings._skinStatus.mode~="textured" then settings._skinStatus={texture="loaded",mode="textured"} end
+    end
+    local shadow=create("Frame",gui,{Name="StudioShadow",AnchorPoint=Vector2.new(.5,.5),Size=UDim2.fromOffset(920,610),BackgroundTransparency=1,Visible=menu.Visible,ZIndex=0})
+    local shadowScale=create("UIScale",shadow,{Scale=1})
+    for i=3,1,-1 do
+        local layer=create("Frame",shadow,{AnchorPoint=Vector2.new(.5,.5),Position=UDim2.fromScale(.5,.51),Size=UDim2.new(1,12*i,1,12*i),BackgroundColor3=Color3.fromRGB(0,0,0),BackgroundTransparency=.92-i*.025,BorderSizePixel=0,ZIndex=0})
+        rounded(layer,26+i*3)
+    end
+    local top=create("Frame",menu,{Name="StudioHeader",Size=UDim2.new(1,0,0,78),BackgroundColor3=Color3.fromRGB(14,21,27),BackgroundTransparency=.3,BorderSizePixel=0,ZIndex=0})
+    create("UIGradient",top,{Rotation=90,Transparency=NumberSequence.new({NumberSequenceKeypoint.new(0,.05),NumberSequenceKeypoint.new(1,1)})})
+    local bottom=create("Frame",menu,{Position=UDim2.new(0,0,1,-47),Size=UDim2.new(1,0,0,47),BackgroundColor3=Color3.fromRGB(7,11,16),BackgroundTransparency=.25,BorderSizePixel=0,ZIndex=0})
+    create("UIGradient",bottom,{Rotation=90,Transparency=NumberSequence.new({NumberSequenceKeypoint.new(0,1),NumberSequenceKeypoint.new(1,.2)})})
+    local emblem=create("Frame",menu,{Name="StudioEmblem",Position=UDim2.fromOffset(29,24),Size=UDim2.fromOffset(23,20),Rotation=-16,BackgroundTransparency=1,BorderSizePixel=0})
+    rounded(emblem,6)
+    local logoRim=stroke(emblem,palette.accent,4); logoRim.Name="DecorationStroke"; logoRim.Transparency=.08
+    title.Position,title.Size=UDim2.fromOffset(65,15),UDim2.fromOffset(106,32)
+    controlRows.subscription.badge.Position=UDim2.fromOffset(184,17)
+    controlRows.subscription.badge.Size=UDim2.fromOffset(222,30)
+    local studio=button(menu,"Studio",UDim2.fromOffset(413,19),UDim2.fromOffset(44,30))
+    studio.TextSize=10; studio.TextColor3=Color3.fromRGB(205,245,145)
+    describe(studio,"Применить лаймовую тему с обложек OKTAN. Остальные настройки сохранятся.")
+    connect(studio.Activated,function()
+        settings.menuSaturation,settings.menuValue=55,96
+        setValue("menuHue",78)
+    end)
+    api.clearNodes=function() table.clear(nodes) end
+    local function paint(object,entry,accent)
+        if not object.Parent then return end
+        object.BackgroundColor3=entry.selected and palette.control:Lerp(accent,.12) or palette.control
+        entry.rim.Color=entry.selected and accent or Color3.fromRGB(120,143,158)
+        entry.rim.Transparency=entry.selected and .32 or .79
+        object.TextColor3=entry.selected and accent or palette.text
+    end
+    api.bindNode=function(object,selected)
+        local rim=object:FindFirstChildOfClass("UIStroke")
+        if rim then
+            rim.Name="StudioNodeRim"; rim.Thickness=1
+            nodes[object]={selected=selected,rim=rim}
+            paint(object,nodes[object],palette.accent)
+        end
+    end
+    api.theme=function(accent)
+        logoRim.Color=accent
+        for object,entry in pairs(nodes) do if object.Parent then paint(object,entry,accent) else nodes[object]=nil end end
+    end
+    api.step=function()
+        if textureEnabled~=settings.skinTextures then
+            textureEnabled=settings.skinTextures
+            if textureEnabled and not loading and not asset then attempted=false; settings._skinStatus={texture="idle",mode="procedural"} end
+        end
+        if not settings.skinTextures then settings._skinStatus.mode="procedural" end
+        if registeredAt and settings._skinStatus.mode=="waiting for image" and os.clock()-registeredAt>8 then fail("image unavailable") end
+        if not menu.Visible then shadow.Visible=false; return end
+        shadow.Visible=not settings.lowFx
+        if shadow.Visible then shadow.Position=menu.Position; shadowScale.Scale=scale.Scale end
+    end
+    table.insert(cleanups,function() alive=false; table.clear(nodes); shadow:Destroy() end)
+    return api
+end
+controlRows.studio=initializeStudioSkin()
+end
+
 local raidReport = button(actionsRow, "Export Debug", UDim2.fromOffset(516, 12), UDim2.fromOffset(184, 32))
 describe(raidReport, "Если Kills показывает прочерк, сохраните структуру рейдовых данных для подключения счётчика.")
 connect(raidReport.Activated, function()
@@ -1301,6 +1415,7 @@ connect(raidReport.Activated, function()
         end
         report.camera = { ads = settings._ads, nativeFov = settings._nativeFov, rawRmb = Input:IsMouseButtonPressed(Enum.UserInputType.MouseButton2), fov = workspace.CurrentCamera and workspace.CurrentCamera.FieldOfView, viewmodel = settings.viewmodel, viewmodelStatus = settings._viewmodelStatus }
         report.cameraTrace = settings._cameraTrace
+        report.skin = settings._skinStatus
         report.performance = settings._performance
         report.subscription = settings._subscriptionInfo
         report.music = settings._musicStatus
@@ -2203,7 +2318,7 @@ local treeGroups = {
     ["Бинды"] = { "Инвентарь", "Dynamic Island", "Управление", "Назначения функций" },
     ["Настройки"] = { "Оформление", "Клиент", "Music", "Performance" },
 }
-local settingGroup = { islandMusic = "Dynamic Island", adaptiveEsp = "Performance", lowFx = "Performance", perfDebug = "Performance", yandexPlay = "Music", spotifyPlay = "Music", musicPlay = "Music", musicVolume = "Music", musicRepeat = "Music", musicIndex = "Music", noRecoil = "Weapon Tuning", aimEase = "Область и плавность", aimFilter = "Область и плавность", graphics = "Visual Studio", gfxTier = "Visual Studio", gfxLook = "Visual Studio", echo = "Оформление", echoDelay = "Оформление", echoFreeze = "Оформление", motion = "Оформление", killFx = "Оформление", crossStyle = "Прицел", crossWidth = "Прицел", noLeaves = "Vegetation", noGrass = "Vegetation", corpseEsp = "Loot", itemEsp = "Loot", lootThrough = "Loot", lootRange = "Loot", lootTextSize = "Loot",
+local settingGroup = { skinTextures = "Оформление", islandMusic = "Dynamic Island", adaptiveEsp = "Performance", lowFx = "Performance", perfDebug = "Performance", yandexPlay = "Music", spotifyPlay = "Music", musicPlay = "Music", musicVolume = "Music", musicRepeat = "Music", musicIndex = "Music", noRecoil = "Weapon Tuning", aimEase = "Область и плавность", aimFilter = "Область и плавность", graphics = "Visual Studio", gfxTier = "Visual Studio", gfxLook = "Visual Studio", echo = "Оформление", echoDelay = "Оформление", echoFreeze = "Оформление", motion = "Оформление", killFx = "Оформление", crossStyle = "Прицел", crossWidth = "Прицел", noLeaves = "Vegetation", noGrass = "Vegetation", corpseEsp = "Loot", itemEsp = "Loot", lootThrough = "Loot", lootRange = "Loot", lootTextSize = "Loot",
     noVisor = "Vision", cameraFov = "Vision", cameraFovValue = "Vision",
     viewmodel = "Viewmodel", vmX = "Viewmodel", vmY = "Viewmodel", vmZ = "Viewmodel", sticky = "Наведение", noFog = "Освещение", bubbles = "Оформление", snow = "Оформление", snowDrifts = "Оформление", friendHats = "Оформление", espFps = "Цвет и оформление", adaptiveText = "Подписи",
     aim = "Наведение", aimPlayers = "Цели и проверки", aimDummies = "Цели и проверки",
@@ -2335,7 +2450,16 @@ table.insert(refreshers, function()
 end)
 local graphConnections = {}
 table.insert(cleanups, function() for _, connection in ipairs(graphConnections) do connection:Disconnect() end end)
-local graphTweens = {}
+local graphTweens, shimmerTweens = {}, {}
+local shimmerEnabled
+local function syncShimmers()
+    local enabled=menu.Visible and settings.motion and not settings.lowFx
+    if enabled==shimmerEnabled then return end
+    shimmerEnabled=enabled
+    for _,tween in ipairs(shimmerTweens) do if enabled then tween:Play() else tween:Pause() end end
+end
+connect(menu:GetPropertyChangedSignal("Visible"),syncShimmers)
+table.insert(refreshers,syncShimmers)
 local function animate(object, properties, duration, delay)
     local tween = TweenService:Create(object,
         TweenInfo.new(settings.motion and (duration or 0.22) or 0, Enum.EasingStyle.Quart, Enum.EasingDirection.Out, 0, false, delay or 0), properties)
@@ -2346,6 +2470,7 @@ end
 local function cancelAnimations()
     for _, tween in ipairs(graphTweens) do tween:Cancel() end
     table.clear(graphTweens)
+    table.clear(shimmerTweens)
 end
 table.insert(cleanups, cancelAnimations)
 local graph = create("ScrollingFrame", menu, {
@@ -2474,8 +2599,8 @@ local function wire(a, b)
     })
 end
 local function node(label, x, y, width, selected, callback)
-    local object = button(graph, label, UDim2.fromOffset(x, y), UDim2.fromOffset(width, 30))
-    object.BackgroundTransparency = selected and 0.12 or 0.3
+    local object = button(graph, label, UDim2.fromOffset(x, y), UDim2.fromOffset(width, 34))
+    object.BackgroundTransparency = selected and 0.08 or 0.18
     object.TextColor3 = selected and palette.accent or palette.text
     object.TextSize = 13
     object.ZIndex = 3
@@ -2483,7 +2608,7 @@ local function node(label, x, y, width, selected, callback)
     object:FindFirstChildOfClass("UICorner").CornerRadius = UDim.new(0, 10)
     create("UIGradient", object, {
         Rotation = 90,
-        Color = ColorSequence.new(Color3.fromRGB(235, 241, 250), Color3.fromRGB(135, 151, 176)),
+        Color = ColorSequence.new(Color3.fromRGB(230, 241, 252), Color3.fromRGB(100, 125, 146)),
     })
     object.TextXAlignment = Enum.TextXAlignment.Left
     create("UIPadding", object, { PaddingLeft = UDim.new(0, 24), PaddingRight = UDim.new(0, 10) })
@@ -2499,8 +2624,10 @@ local function node(label, x, y, width, selected, callback)
         gradient.Offset = Vector2.new(-0.25, 0)
         local shimmer = TweenService:Create(gradient, TweenInfo.new(2.4, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true), { Offset = Vector2.new(0.25, 0) })
         table.insert(graphTweens, shimmer)
-        shimmer:Play()
+        table.insert(shimmerTweens,shimmer)
+        if menu.Visible then shimmer:Play() end
     end
+    controlRows.studio.bindNode(object,selected)
     local restTransparency = object.BackgroundTransparency
     object.Position = UDim2.fromOffset(x + 12, y)
     object.BackgroundTransparency, object.TextTransparency = 1, 1
@@ -2510,14 +2637,14 @@ local function node(label, x, y, width, selected, callback)
     gconnect(object.MouseEnter, function()
         if hoverTween then hoverTween:Cancel() end
         hoverTween = TweenService:Create(object, TweenInfo.new(0.14), {
-            BackgroundColor3 = Color3.fromRGB(34, 41, 54), TextColor3 = Color3.fromRGB(255, 255, 255),
+            BackgroundColor3 = palette.control:Lerp(palette.accent,.15), TextColor3 = Color3.fromRGB(255, 255, 255),
         })
         hoverTween:Play()
     end)
     gconnect(object.MouseLeave, function()
         if hoverTween then hoverTween:Cancel() end
         hoverTween = TweenService:Create(object, TweenInfo.new(0.2), {
-            BackgroundColor3 = palette.control, TextColor3 = selected and palette.accent or palette.text,
+            BackgroundColor3 = selected and palette.control:Lerp(palette.accent,.12) or palette.control, TextColor3 = selected and palette.accent or palette.text,
         })
         hoverTween:Play()
     end)
@@ -2533,6 +2660,7 @@ renderGraph = function()
     for _, connection in ipairs(graphConnections) do connection:Disconnect() end
     table.clear(graphConnections)
     table.clear(graphBindingLabels)
+    controlRows.studio.clearNodes()
     graph:ClearAllChildren()
     for _, page in pairs(pages) do page.Visible = false end
     searchResults.Visible = false
@@ -2543,7 +2671,7 @@ renderGraph = function()
     node("OKTAN", 12, 212, 105, true, function() selectedCategory = "Наведение"; selectedGroup = "Наведение"; renderGraph() end)
     for index, category in ipairs(categories) do
         local y = 18 + (index - 1) * 52
-        wire(Vector2.new(117, 227), Vector2.new(174, y + 15))
+        wire(Vector2.new(117, 229), Vector2.new(174, y + 17))
         node(displayNames[category] or category, 174, y, 130, category == selectedCategory, function()
             graph.CanvasPosition = Vector2.new(0, 0)
             selectedCategory = category
@@ -2574,22 +2702,22 @@ renderGraph = function()
             end
         end)
     end
-    local categoryY = 33
+    local categoryY = 35
     for index, category in ipairs(categories) do
-        if category == selectedCategory then categoryY = 33 + (index - 1) * 52 end
+        if category == selectedCategory then categoryY = 35 + (index - 1) * 52 end
     end
     local groups = treeGroups[selectedCategory] or {}
     if selectedCategory == "Настройки" then groups = { "Оформление", "Инвентарь", "Dynamic Island", "Клиент", "Music", "Performance" } end
     local selectedY = 90
     for index, group in ipairs(groups) do
         local y = 35 + (index - 1) * 88
-        wire(Vector2.new(304, categoryY), Vector2.new(350, y + 15))
+        wire(Vector2.new(304, categoryY), Vector2.new(350, y + 17))
         node(displayNames[group] or group, 350, y, 170, group == selectedGroup, function()
             graph.CanvasPosition = Vector2.new(0, 0)
             selectedGroup = group
             renderGraph()
         end)
-        if group == selectedGroup then selectedY = y + 15 end
+        if group == selectedGroup then selectedY = y + 17 end
     end
     local leaves = {}
     for _, entry in ipairs(controlRows) do
@@ -2606,7 +2734,7 @@ renderGraph = function()
     for index, entry in ipairs(leaves) do
         local definition = schema[entry.key]
         local y = 14 + (index - 1) * 40
-        wire(Vector2.new(520, selectedY), Vector2.new(588, y + 15))
+        wire(Vector2.new(520, selectedY), Vector2.new(588, y + 17))
         local assigned = bindings[entry.key]
         local label = (entry.key:match("Hue$") and (entry.key == "menuHue" and "Menu Color" or entry.key == "espHue" and "ESP Color" or "FOV Color") or definition[3])
         if query ~= "" then label = (displayNames[entry.page] or entry.page) .. " / " .. label end
@@ -2728,11 +2856,12 @@ local function applyTheme()
     for _, object in ipairs(island:GetDescendants()) do
         if object:IsA("UIStroke") then object.Color = accent end
     end
-    menu.BackgroundColor3 = Color3.fromRGB(12, 12, 15)
+    menu.BackgroundColor3 = Color3.fromRGB(8, 13, 18)
     for _, object in ipairs(menu:GetDescendants()) do
-        if object:IsA("UIStroke") and object.Name ~= "DecorationStroke" then object.Color = accent; object.Transparency = 0.8 end
+        if object:IsA("UIStroke") and object.Name ~= "DecorationStroke" and object.Name ~= "StudioNodeRim" then object.Color = accent; object.Transparency = 0.8 end
         if object:IsA("ScrollingFrame") then object.ScrollBarImageColor3 = accent end
     end
+    controlRows.studio.theme(accent)
     for _, fill in ipairs(sliderFills) do fill.BackgroundColor3 = accent end
     refreshAll()
 end
@@ -3348,7 +3477,8 @@ local function initializeWinter()
             Size = UDim2.fromOffset(3, 3), BackgroundColor3 = Color3.fromRGB(240, 249, 255),
             BackgroundTransparency = 0.3, BorderSizePixel = 0, ZIndex = 0 })
         rounded(glint, 1000)
-        table.insert(bubbles, { host = host, body = body, rim = rim, halos = halos,
+        local texture=create("ImageLabel",host,{Name="StudioOrbTexture",AnchorPoint=Vector2.new(.5,.5),Position=UDim2.fromScale(.5,.5),Size=UDim2.fromScale(1.18,1.18),BackgroundTransparency=1,ImageTransparency=1,ZIndex=0})
+        table.insert(bubbles, { texture=texture, glint=glint, host = host, body = body, rim = rim, halos = halos,
             depth = depth, rimLight = rimLight, reflection = reflection, style = style,
             scale = create("UIScale", host, { Scale = 1 }) })
     end
@@ -3386,7 +3516,7 @@ local function initializeWinter()
     end)
     local time, scanElapsed = 0, 1
     local decorElapsed, decorTime, decorAccent, decorVisible = 1, 0, nil, false
-    local decorBubbles, decorSnow, decorDrifts, decorMotion
+    local decorBubbles, decorSnow, decorDrifts, decorMotion, decorTexture, decorAsset
     return function(dt)
         time += dt
         scanElapsed += dt
@@ -3396,19 +3526,30 @@ local function initializeWinter()
             if settings.motion then decorTime += dt end
         end
         local repaint = decoration.Visible and (not decorVisible or palette.accent ~= decorAccent
-            or decorBubbles ~= settings.bubbles or decorSnow ~= settings.snow or decorDrifts ~= settings.snowDrifts or decorMotion ~= settings.motion
-            or (settings.motion and decorElapsed >= 1 / 30))
+            or decorBubbles ~= settings.bubbles or decorSnow ~= settings.snow or decorDrifts ~= settings.snowDrifts or decorMotion ~= settings.motion or decorTexture ~= settings.skinTextures or decorAsset ~= (settings._skinStatus and settings._skinStatus.texture)
+            or (settings.motion and decorElapsed >= 1 / 30) or (settings._skinStatus.mode=="waiting for image" and decorElapsed>=.1))
         decorVisible = decoration.Visible
         if repaint then
             decorElapsed = 0
             local changedColor = palette.accent ~= decorAccent
             decorAccent = palette.accent
             decorBubbles, decorSnow, decorDrifts, decorMotion = settings.bubbles, settings.snow, settings.snowDrifts, settings.motion
+            decorTexture,decorAsset=settings.skinTextures,settings._skinStatus and settings._skinStatus.texture
             if changedColor then for _, divider in ipairs(separators) do divider.BackgroundColor3 = palette.accent end end
             for _, orb in ipairs(bubbles) do
                 orb.host.Visible = settings.bubbles
                 if settings.bubbles then
                     local style, t = orb.style, decorTime
+                    local uri=settings.skinTextures and controlRows.studio.asset()
+                    if uri and orb.texture.Image~=uri then orb.texture.Image=uri end
+                    local textured=uri and orb.texture.IsLoaded
+                    orb.texture.ImageTransparency=textured and .12 or 1
+                    orb.body.Visible,orb.reflection.Visible,orb.glint.Visible=not textured,not textured,not textured
+                    if textured then
+                        controlRows.studio.loaded()
+                        orb.texture.ImageColor3=palette.accent:Lerp(Color3.fromRGB(245,250,255),.82)
+                        orb.texture.Rotation=math.sin(t*.08+style.phase)*4
+                    end
                     orb.host.Position = UDim2.fromScale(style.x + math.sin(t * 0.12 + style.phase) * 0.018,
                         style.y + math.cos(t * 0.1 + style.phase) * 0.026)
                     orb.scale.Scale = 1 + math.sin(t * 0.22 + style.phase) * 0.018
@@ -4302,6 +4443,7 @@ RunService:BindToRenderStep(renderName, Enum.RenderPriority.Last.Value + 1, func
     local camera = workspace.CurrentCamera
     controlRows.musicIsland.step(dt)
     updateHud(dt)
+    controlRows.studio.step()
     updateWinter(dt)
     soulFx.step(dt)
     visualStudio.step(dt)
