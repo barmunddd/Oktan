@@ -1,6 +1,6 @@
 -- Oktan authenticated loader. Keys stay in memory and are never sent to the renewal URL.
 local RENEW_URL = "https://funpay.com/users/15095530/"
-local CLIENT_URL = "https://raw.githubusercontent.com/barmunddd/Oktan/fdf9b2e6ad2d5fc85cfa3aa68a5b1194be8ec19a/client.luau"
+local CLIENT_URL = "https://raw.githubusercontent.com/barmunddd/Oktan/e3b105de11d1d826c222fa893dbea4dbf0c16b9f/client.luau"
 local env = getgenv()
 local playerGui = game:GetService("Players").LocalPlayer:WaitForChild("PlayerGui")
 local function makeStartup(name)
