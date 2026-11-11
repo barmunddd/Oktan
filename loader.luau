@@ -59,6 +59,7 @@ local function openRenewal(copyFallback)
     return "Открой ссылку FunPay вручную: " .. RENEW_URL
 end
 local function accessNotice(state, automatic)
+    local networkProblem=startup.problem
     if not ui.Parent then ui,label,startup=makeStartup("OktanRenewal") end
     startup.stop(); startup.track.Visible=false
     startup.card.Size=UDim2.fromOffset(480,300)
@@ -67,6 +68,7 @@ local function accessNotice(state, automatic)
     label.TextColor3=state=="unavailable" and Color3.fromRGB(227,237,244) or Color3.fromRGB(255,191,145)
     local titles={expired="Срок ключа истёк",revoked="Ключ отозван",invalid="Ключ не найден",inactive="Ключ больше не действует",unavailable="Не удалось подтвердить подписку"}
     label.Text=(titles[state] or titles.inactive).."\n"..RENEW_URL.."\nКлюч и данные аккаунта не передаются в FunPay."
+    if state=="unavailable" and networkProblem then label.Text=(titles.unavailable).."\n"..networkProblem.."\nПовтори запуск позже. Ключ не признан недействительным." end
     if automatic and state=="expired" then
         local last=env.OktanRenewalOpenedAt
         if type(last)~="number" or os.clock()-last>60 then
@@ -94,12 +96,26 @@ local function boot()
     if type(send) ~= "function" then error("HTTP request недоступен", 0) end
     local function verify()
         if not key then return nil end
-        local ok, response = pcall(send, { Url = "https://oktandev.pythonanywhere.com/verify", Method = "POST",
-            Headers = { ["Content-Type"] = "application/json" }, Body = http:JSONEncode({ key = key }), Timeout = 10 })
-        if not ok or type(response) ~= "table" or response.StatusCode ~= 200 then return nil end
+        local completed,closed,ok,response=false,false,false,nil
+        local payload={Url="https://oktandev.pythonanywhere.com/verify",Method="POST",Headers={["Content-Type"]="application/json"},Body=http:JSONEncode({key=key}),Timeout=12}
+        local worker=task.spawn(function()
+            local sent,result=pcall(send,payload)
+            if not closed then ok,response,completed=sent,result,true end
+        end)
+        local deadline=os.clock()+15
+        while not completed and key and os.clock()<deadline do task.wait(.05) end
+        closed=true
+        if not completed then
+            if type(task.cancel)=="function" and worker then pcall(task.cancel,worker) end
+            startup.problem="Сервер не ответил за 15 секунд."
+            return nil
+        end
+        if not ok or type(response)~="table" then startup.problem="Ошибка соединения с сервером проверки."; return nil end
+        if response.StatusCode~=200 then startup.problem="Сервер проверки ответил HTTP "..tostring(response.StatusCode).."."; return nil end
         local decoded, result = pcall(function() return http:JSONDecode(response.Body) end)
-        if not decoded or type(result) ~= "table" or type(result.valid) ~= "boolean" then return nil end
+        if not decoded or type(result) ~= "table" or type(result.valid) ~= "boolean" then startup.problem="Некорректный ответ сервера проверки."; return nil end
         if result.valid and result.status and result.status ~= "active" then return nil end
+        startup.problem=nil
         return result
     end
     local first = verify()
