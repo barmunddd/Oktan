@@ -2070,7 +2070,7 @@ text(inspector, "INSPECT / LOADOUT", {
 local inspectClose = text(inspector, "×", {
     Position = UDim2.new(1, -42, 0, 12), Size = UDim2.fromOffset(30, 30), TextSize = 22,
 }, "TextButton")
-connect(inspectClose.Activated, function() inspector.Visible = false; inspectTarget = nil end)
+connect(inspectClose.Activated, function() controlRows.inspectorMotion.close() end)
 local inventoryScroll = create("ScrollingFrame", inspector, {
     Position = UDim2.fromOffset(18, 55), Size = UDim2.new(1, -36, 1, -73),
     BackgroundTransparency = 1, BorderSizePixel = 0, ScrollBarThickness = 3,
@@ -2100,7 +2100,7 @@ local function heldItem(character)
     return character:FindFirstChildOfClass("Tool")
 end
 local function inspectNearest()
-    if inspector.Visible then inspector.Visible = false; inspectTarget = nil; return end
+    if inspector.Visible then controlRows.inspectorMotion.close(); return end
     local camera = workspace.CurrentCamera
     if not camera then return end
     local nearest, best = controlRows.inventoryArt.containerTarget(camera), settings.inspectRadius
@@ -2186,7 +2186,7 @@ local inventoryNote = text(inspector, "", {
     Position = UDim2.fromOffset(244, 465), Size = UDim2.fromOffset(408, 22),
     TextColor3 = palette.muted, TextSize = 11,
 })
-local cardArea = create("Frame", inspector, {
+local cardArea = create("CanvasGroup", inspector, {
     Position = UDim2.fromOffset(244, 104), Size = UDim2.fromOffset(408, 350),
     BackgroundTransparency = 1,
 })
@@ -2203,18 +2203,16 @@ for index, name in ipairs({ "Gear", "Weapons", "Loot" }) do
     local control = button(inspector, name, UDim2.fromOffset(244 + (index - 1) * 138, 58), UDim2.fromOffset(130, 32))
     tabsInventory[name] = control
     connect(control.Activated, function()
-        selectedInventoryTab, inventoryPage, inventorySignature = name, 1, nil
+        controlRows.inspectorMotion.tab(name)
     end)
 end
 local previousInventory = button(inspector, "Previous", UDim2.fromOffset(244, 497), UDim2.fromOffset(130, 28))
 local nextInventory = button(inspector, "Next", UDim2.fromOffset(522, 497), UDim2.fromOffset(130, 28))
 connect(previousInventory.Activated, function()
-    inventoryPage = math.max(1, inventoryPage - 1)
-    inventorySignature = nil
+    controlRows.inspectorMotion.page(-1)
 end)
 connect(nextInventory.Activated, function()
-    inventoryPage += 1
-    inventorySignature = nil
+    controlRows.inspectorMotion.page(1)
 end)
 local function visualCopy(source, parent)
     if not source then return nil end
@@ -2649,13 +2647,7 @@ local function initializeHudMotion()
         islandChevron.Text="+"
         local rotation=islandChevron.Rotation or 0
         islandChevron.Rotation=settings.motion and rotation+(target-rotation)*(1-math.exp(-16*dt)) or target
-        if inspector.Visible~=shown then
-            shown=inspector.Visible
-            if shown and settings.motion and not settings.lowFx then
-                inspector.BackgroundTransparency=.4
-                local tween=TweenService:Create(inspector,TweenInfo.new(.26),{BackgroundTransparency=.035}); table.insert(api.tweens,tween); tween:Play()
-            elseif not shown then api.clear() end
-        end
+        if inspector.Visible~=shown then shown=inspector.Visible; if not shown then api.clear() end end
         if api.elapsed<.25 then return end
         api.elapsed=0
         if inspector.Visible then
@@ -2685,6 +2677,8 @@ local function updateHud(dt)
     controlRows.inventoryArt.step(dt)
     controlRows.hudMotion.step(dt)
     controlRows.release.step(dt)
+    controlRows.profiles.uiStep()
+    controlRows.inspectorMotion.step(dt)
     controlRows.hudTiming.inventory += dt
     controlRows.hudTiming.hud += dt
     local camera = workspace.CurrentCamera
@@ -3393,6 +3387,331 @@ local function initializeReleaseCenter()
     return api
 end
 controlRows.release=initializeReleaseCenter()
+end
+
+do
+local function initializeProfiles()
+    local api={items={},revision=0,serial=0,status="Готово",disk=canSave}
+    local excluded={musicPlay=true,spotifyPlay=true,yandexPlay=true,echoFreeze=true,perfDebug=true}
+    local function nameOf(value)
+        if type(value)~="string" then return nil end
+        value=value:match("^%s*(.-)%s*$")
+        local ok,length=pcall(utf8.len,value)
+        if not ok or not length or length<1 or length>48 or #value>96 or value:find("%c") then return nil end
+        return value
+    end
+    local function validate(data)
+        if type(data)~="table" or data.format~="OktanProfile" or data.version~=1 or not nameOf(data.name)
+            or type(data.settings)~="table" or type(data.bindings)~="table" then return nil,"Нужен JSON-конфиг OktanProfile v1." end
+        local result={format="OktanProfile",version=1,name=nameOf(data.name),settings={},bindings={}}
+        local count=0
+        for key,value in pairs(data.settings) do
+            count+=1; if count>400 then return nil,"Слишком много параметров." end
+            local entry=schema[key]
+            if entry and not excluded[key] then
+                if type(value)~=type(entry[2]) then return nil,"Неверный тип параметра: "..key end
+                if type(value)=="number" then
+                    if value~=value or math.abs(value)==math.huge or value<entry[6] or value>entry[7] then return nil,"Значение вне диапазона: "..key end
+                    value=math.round(value)
+                end
+                result.settings[key]=value
+            end
+        end
+        local used={}; count=0
+        for action,key in pairs(data.bindings) do
+            count+=1; if count>600 then return nil,"Слишком много биндов." end
+            if allowedActions[action] then
+                if type(key)~="string" or not allowedKeys[key] or used[key] then return nil,"Некорректные или повторяющиеся бинды." end
+                result.bindings[action]=key; used[key]=true
+            end
+        end
+        return result
+    end
+    api.validate=validate
+    local function current(name)
+        local payload={format="OktanProfile",version=1,name=name,settings={},bindings=table.clone(bindings)}
+        for key in pairs(schema) do if not excluded[key] then payload.settings[key]=settings[key] end end
+        return payload
+    end
+    local function find(id) for index,item in ipairs(api.items) do if item.id==id then return item,index end end end
+    api.find=find
+    local function persist()
+        if not canSave then api.status="Сохранено в памяти: файловые функции недоступны."; return false end
+        local nextRevision=api.revision+1
+        local ok=pcall(function()
+            writefile("Oktan-profiles-"..(nextRevision%2==0 and "a" or "b")..".json",HttpService:JSONEncode({format="OktanProfileLibrary",version=1,revision=nextRevision,profiles=api.items}))
+        end)
+        if ok then api.revision=nextRevision; api.status="Библиотека сохранена в workspace."
+        else api.status="Профили в памяти; запись на диск не удалась." end
+        return ok
+    end
+    if canSave then
+        for _,slot in ipairs({"a","b"}) do
+            local ok,data=pcall(function()
+                local raw=readfile("Oktan-profiles-"..slot..".json")
+                if type(raw)~="string" or #raw>1048576 then return nil end
+                local library=HttpService:JSONDecode(raw)
+                if type(library)~="table" or library.format~="OktanProfileLibrary" or library.version~=1 or type(library.revision)~="number" or library.revision~=library.revision or library.revision<0 or library.revision>1e9 or library.revision%1~=0
+                    or type(library.profiles)~="table" or #library.profiles>30 then return nil end
+                local ids,items={},{}
+                for key in pairs(library.profiles) do if type(key)~="number" or key%1~=0 or key<1 or key>#library.profiles then return nil end end
+                for _,entry in ipairs(library.profiles) do
+                    local profile=validate(entry)
+                    if not profile or type(entry.id)~="string" or #entry.id>80 or not entry.id:match("^[%w%-]+$") or ids[entry.id] then return nil end
+                    profile.id=entry.id; ids[entry.id]=true; table.insert(items,profile)
+                end
+                return {revision=library.revision,items=items}
+            end)
+            if ok and data and data.revision>=api.revision then api.items,api.revision=data.items,data.revision end
+        end
+    end
+    local function unique(name)
+        for _,profile in ipairs(api.items) do if string.lower(profile.name)==string.lower(name) then return profile end end
+    end
+    local function add(profile)
+        if #api.items>=30 then return false,"Лимит: 30 конфигов." end
+        api.serial+=1
+        profile.id=HttpService:GenerateGUID(false):gsub("[^%w]","").."-"..api.serial
+        table.insert(api.items,profile); persist()
+        return true,profile.id
+    end
+    api.save=function(name,overwrite)
+        name=nameOf(name); if not name then return false,"Название: 1–48 символов, без переноса строк." end
+        local existing=unique(name)
+        if existing and not overwrite then return false,"CONFIRM",existing.id end
+        local profile=current(name)
+        if existing then profile.id=existing.id; local _,index=find(existing.id); api.items[index]=profile; persist(); return true,profile.id end
+        return add(profile)
+    end
+    api.export=function(id)
+        local profile=find(id); if not profile then return nil,"Выбери конфиг." end
+        local copy={format="OktanProfile",version=1,name=profile.name,settings=profile.settings,bindings=profile.bindings}
+        return HttpService:JSONEncode(copy)
+    end
+    api.import=function(raw)
+        if type(raw)~="string" or #raw==0 or #raw>65536 then return false,"Вставь JSON-конфиг размером до 64 КБ." end
+        local ok,data=pcall(function() return HttpService:JSONDecode(raw) end)
+        if not ok then return false,"Это не JSON-конфиг. Lua-код и ссылки не импортируются." end
+        local profile,message=validate(data); if not profile then return false,message end
+        if unique(profile.name) then
+            local base=utf8.len(profile.name)<=40 and profile.name or "Imported"
+            for index=2,32 do if not unique(base.." ("..index..")") then profile.name=base.." ("..index..")"; break end end
+        end
+        return add(profile)
+    end
+    api.apply=function(id,includeBindings)
+        local profile=find(id); if not profile then return false,"Выбери конфиг." end
+        api.previous=current("Undo"); api.previous.bindings=table.clone(bindings)
+        for key,value in pairs(profile.settings) do settings[key]=value end
+        if includeBindings then bindings=table.clone(profile.bindings) end
+        capture=nil; pendingNumeric=nil; changed(); applyTheme(); refreshAll()
+        return true,"Загружен: "..profile.name..(includeBindings and " · с биндами" or " · твои бинды сохранены")
+    end
+    api.undo=function()
+        if not api.previous then return false,"Пока нечего отменять." end
+        for key,value in pairs(api.previous.settings) do settings[key]=value end
+        bindings=table.clone(api.previous.bindings); api.previous=nil
+        changed(); applyTheme(); refreshAll(); return true,"Предыдущие настройки восстановлены."
+    end
+    api.remove=function(id)
+        local _,index=find(id); if not index then return false,"Выбери конфиг." end
+        table.remove(api.items,index); persist(); return true,"Конфиг удалён из библиотеки."
+    end
+    return api
+end
+controlRows.profiles=initializeProfiles()
+end
+
+do
+local function initializeProfilesUI()
+    local api=controlRows.profiles
+    local selected,withBinds,confirm,notice=nil,false,nil,""
+    local shield=create("TextButton",gui,{Name="ConfigShield",Text="",Size=UDim2.fromScale(1,1),BackgroundColor3=Color3.fromRGB(0,0,0),BackgroundTransparency=.45,AutoButtonColor=false,Visible=false,Active=true,Modal=true,ZIndex=33})
+    local window=create("CanvasGroup",gui,{Name="ConfigLibrary",AnchorPoint=Vector2.new(.5,.5),Position=UDim2.fromScale(.5,.5),Size=UDim2.fromOffset(840,550),BackgroundColor3=palette.background,BackgroundTransparency=.02,BorderSizePixel=0,Visible=false,ZIndex=34})
+    rounded(window,22); local rim=stroke(window,palette.accent); rim.Transparency=.5
+    local fit=create("UIScale",window,{Scale=1})
+    text(window,"CONFIG LIBRARY",{Position=UDim2.fromOffset(22,15),Size=UDim2.fromOffset(550,27),TextSize=17,Font=Enum.Font.GothamBold,TextXAlignment=Enum.TextXAlignment.Left})
+    text(window,"Твои настройки · готовые конфиги · обмен с другом",{Position=UDim2.fromOffset(22,43),Size=UDim2.fromOffset(690,18),TextSize=11,TextColor3=palette.muted,TextXAlignment=Enum.TextXAlignment.Left})
+    local close=button(window,"Close",UDim2.new(1,-102,0,20),UDim2.fromOffset(80,30))
+    local input=text(window,"",{Name="ProfileName",Position=UDim2.fromOffset(22,78),Size=UDim2.fromOffset(540,36),BackgroundColor3=palette.control,BackgroundTransparency=.2,PlaceholderText="Название конфига…",ClearTextOnFocus=false,TextXAlignment=Enum.TextXAlignment.Left},"TextBox")
+    rounded(input,10); create("UIPadding",input,{PaddingLeft=UDim.new(0,12)})
+    local save=button(window,"Save Current",UDim2.fromOffset(574,78),UDim2.fromOffset(244,36))
+    local list=create("ScrollingFrame",window,{Name="SavedProfiles",Position=UDim2.fromOffset(22,130),Size=UDim2.fromOffset(232,336),BackgroundTransparency=1,BorderSizePixel=0,ScrollBarThickness=3,AutomaticCanvasSize=Enum.AutomaticSize.Y,CanvasSize=UDim2.fromOffset(0,0)})
+    local panel=create("Frame",window,{Position=UDim2.fromOffset(270,130),Size=UDim2.fromOffset(548,336),BackgroundColor3=palette.panel,BackgroundTransparency=.12,BorderSizePixel=0}); rounded(panel,14)
+    local summary=text(panel,"Выбери сохранённый конфиг или импортируй готовый.",{Position=UDim2.fromOffset(14,10),Size=UDim2.fromOffset(520,38),TextSize=12,TextWrapped=true,TextXAlignment=Enum.TextXAlignment.Left})
+    local load=button(panel,"Load",UDim2.fromOffset(14,53),UDim2.fromOffset(120,30))
+    local copy=button(panel,"Copy JSON",UDim2.fromOffset(144,53),UDim2.fromOffset(120,30))
+    local export=button(panel,"Save File",UDim2.fromOffset(274,53),UDim2.fromOffset(120,30))
+    local remove=button(panel,"Delete",UDim2.fromOffset(404,53),UDim2.fromOffset(130,30))
+    local binds=button(panel,"Load binds: OFF",UDim2.fromOffset(14,94),UDim2.fromOffset(250,27))
+    local undo=button(panel,"Undo Load",UDim2.fromOffset(274,94),UDim2.fromOffset(260,27))
+    local raw=text(panel,"",{Name="ProfileJSON",Position=UDim2.fromOffset(14,134),Size=UDim2.fromOffset(520,145),BackgroundColor3=palette.background,BackgroundTransparency=.15,TextSize=11,TextWrapped=true,TextXAlignment=Enum.TextXAlignment.Left,TextYAlignment=Enum.TextYAlignment.Top,MultiLine=true,ClearTextOnFocus=false,PlaceholderText="Вставь JSON-конфиг друга или продавца, затем нажми Import. Импорт добавляет профиль, Load применяет его."},"TextBox")
+    rounded(raw,9); create("UIPadding",raw,{PaddingLeft=UDim.new(0,10),PaddingRight=UDim.new(0,10),PaddingTop=UDim.new(0,8)})
+    local import=button(panel,"Import JSON",UDim2.fromOffset(14,291),UDim2.fromOffset(250,30))
+    local importFile=button(panel,"Import File",UDim2.fromOffset(274,291),UDim2.fromOffset(260,30))
+    local status=text(window,"",{Position=UDim2.fromOffset(22,477),Size=UDim2.fromOffset(796,48),TextSize=11,TextWrapped=true,TextColor3=palette.muted,TextXAlignment=Enum.TextXAlignment.Left})
+    local launcher=button(menu,"Configs",UDim2.new(1,-132,1,-34),UDim2.fromOffset(110,25))
+    local function refresh()
+        list:ClearAllChildren(); create("UIListLayout",list,{Padding=UDim.new(0,6),SortOrder=Enum.SortOrder.LayoutOrder})
+        local items=table.clone(api.items); table.sort(items,function(a,b) return a.name:lower()<b.name:lower() end)
+        for index,profile in ipairs(items) do
+            local item=button(list,profile.name,UDim2.fromOffset(0,0),UDim2.new(1,-8,0,42)); item.LayoutOrder=index
+            item.TextSize=12; item.TextColor3=selected==profile.id and palette.accent or palette.text
+            item.Activated:Connect(function() selected=profile.id; input.Text=profile.name; confirm=nil; notice=""; refresh() end)
+        end
+        if #items==0 then text(list,"Пока нет конфигов.\nСохрани текущие настройки под своим именем.",{Size=UDim2.new(1,-8,0,96),TextWrapped=true,TextSize=12,TextColor3=palette.muted}) end
+        local profile=api.find(selected)
+        if profile then
+            local settingsCount,bindCount=0,0
+            for _ in pairs(profile.settings) do settingsCount+=1 end
+            for _ in pairs(profile.bindings) do bindCount+=1 end
+            summary.Text=profile.name.."\n"..settingsCount.." настроек · "..bindCount.." биндов"
+        else summary.Text="Выбери сохранённый конфиг или импортируй готовый." end
+        save.Text=confirm and confirm.kind=="save" and "Confirm Save" or "Save Current"
+        remove.Text=confirm and confirm.kind=="delete" and "Confirm Delete" or "Delete"
+        binds.Text="Load binds: "..(withBinds and "ON" or "OFF")
+        status.Text=(notice~="" and notice or api.status).."\nЭкспорт: настройки и бинды. Ключ, подписка, друзья и музыкальные подключения не передаются."
+    end
+    local function result(ok,message)
+        notice=message or (ok and "Готово" or "Ошибка"); refresh()
+    end
+    api.open=function()
+        selected=api.find(selected) and selected or nil; confirm=nil
+        window.Visible=true; shield.Visible=true; refresh()
+        if settings.motion and not settings.lowFx then window.GroupTransparency=1; TweenService:Create(window,TweenInfo.new(.22),{GroupTransparency=0}):Play() else window.GroupTransparency=0 end
+    end
+    api.close=function() window.Visible=false; shield.Visible=false; confirm=nil end
+    connect(close.Activated,api.close); connect(launcher.Activated,api.open)
+    connect(save.Activated,function()
+        local overwrite=confirm and confirm.kind=="save" and confirm.name==input.Text and os.clock()<confirm.untilTime
+        local ok,message,id=api.save(input.Text,overwrite)
+        if ok then selected=message; confirm=nil; result(true,api.status)
+        elseif message=="CONFIRM" then confirm={kind="save",name=input.Text,untilTime=os.clock()+5}; result(false,"Имя уже занято. Повтори Save в течение 5 секунд для обновления.")
+        else result(false,message) end
+    end)
+    connect(load.Activated,function() result(api.apply(selected,withBinds)) end)
+    connect(undo.Activated,function() result(api.undo()) end)
+    connect(binds.Activated,function() withBinds=not withBinds; refresh() end)
+    connect(copy.Activated,function()
+        local code,message=api.export(selected)
+        if not code then result(false,message); return end
+        raw.Text=code
+        local ok=type(setclipboard)=="function" and pcall(setclipboard,code)
+        result(true,ok and "JSON скопирован — отправь другу." or "JSON в поле справа: выдели и скопируй его.")
+    end)
+    connect(export.Activated,function()
+        local code,message=api.export(selected)
+        if not code then result(false,message); return end
+        local path="Oktan-profile-"..selected..".json"
+        local ok=type(writefile)=="function" and pcall(writefile,path,code)
+        result(ok,ok and "Файл в workspace: "..path or "Не удалось записать файл.")
+    end)
+    local function importCode(code)
+        local ok,message=api.import(code)
+        if ok then selected=message; raw.Text=""; result(true,"Конфиг добавлен. Проверь выбор биндов и нажми Load.") else result(false,message) end
+    end
+    connect(import.Activated,function() importCode(raw.Text) end)
+    connect(importFile.Activated,function()
+        local ok,code=pcall(function() return readfile("Oktan-profile-import.json") end)
+        if ok then importCode(code) else result(false,"Помести файл в workspace под именем Oktan-profile-import.json.") end
+    end)
+    connect(remove.Activated,function()
+        if not api.find(selected) then result(false,"Выбери конфиг."); return end
+        if confirm and confirm.kind=="delete" and confirm.id==selected and os.clock()<confirm.untilTime then
+            local ok,message=api.remove(selected); selected=nil; confirm=nil; result(ok,message)
+        else confirm={kind="delete",id=selected,untilTime=os.clock()+5}; result(false,"Повтори Delete в течение 5 секунд, чтобы удалить профиль.") end
+    end)
+    describe(launcher,"Открыть библиотеку конфигов: сохранить, загрузить, импортировать или поделиться JSON.")
+    api.uiStep=function()
+        if not menu.Visible then api.close() end
+        if confirm and os.clock()>confirm.untilTime then confirm=nil; if window.Visible then refresh() end end
+        if window.Visible then fit.Scale=scale.Scale; window.BackgroundColor3=palette.background; rim.Color=palette.accent end
+    end
+    api.window=window; api.refresh=refresh
+    table.insert(cleanups,function() shield:Destroy(); window:Destroy(); api.previous=nil end)
+end
+initializeProfilesUI()
+end
+
+do
+local function initializeInspectorMotion()
+    local api={tweens={}}
+    local body=create("CanvasGroup",inspector,{Name="InspectorMotion",AnchorPoint=Vector2.new(.5,.5),Position=UDim2.fromScale(.5,.5),Size=UDim2.fromScale(1,1),BackgroundTransparency=1,GroupTransparency=0})
+    local zoom=create("UIScale",body,{Scale=1})
+    for _,child in ipairs(inspector:GetChildren()) do if child~=body and child:IsA("GuiObject") then child.Parent=body end end
+    local shown=inspector.Visible
+    local function enabled() return settings.motion and not settings.lowFx end
+    local function cancel()
+        for _,tween in ipairs(api.tweens) do tween:Cancel() end; table.clear(api.tweens)
+    end
+    local function tween(object,properties,duration)
+        local value=TweenService:Create(object,TweenInfo.new(duration,Enum.EasingStyle.Quart,Enum.EasingDirection.Out),properties)
+        table.insert(api.tweens,value); value:Play()
+    end
+    local function reset()
+        body.GroupTransparency=0; zoom.Scale=1; inspector.BackgroundTransparency=.035
+        cardArea.GroupTransparency=0; cardArea.Position=UDim2.fromOffset(244,104)
+    end
+    api.reveal=function()
+        cancel(); api.closing=nil; api.pending=nil; reset(); shown=true
+        if enabled() then
+            body.GroupTransparency=1; zoom.Scale=.97; inspector.BackgroundTransparency=.35
+            tween(body,{GroupTransparency=0},.24); tween(zoom,{Scale=1},.28); tween(inspector,{BackgroundTransparency=.035},.24)
+        end
+    end
+    local function finishClose()
+        cancel(); api.closing=nil; api.pending=nil
+        inspector.Visible=false; inspectTarget=nil; shown=false; reset()
+    end
+    api.close=function()
+        if api.closing then return end
+        if not enabled() then finishClose(); return end
+        cancel(); api.pending=nil; api.closing=0
+        tween(body,{GroupTransparency=1},.16); tween(zoom,{Scale=.98},.18); tween(inspector,{BackgroundTransparency=.8},.18)
+    end
+    local function commit(target)
+        selectedInventoryTab,inventoryPage,inventorySignature=target.tab,target.page,nil
+        updateInventoryCards()
+        if enabled() then
+            cardArea.GroupTransparency=1; cardArea.Position=UDim2.fromOffset(244,110)
+            tween(cardArea,{GroupTransparency=0,Position=UDim2.fromOffset(244,104)},.22)
+        else cardArea.GroupTransparency=0; cardArea.Position=UDim2.fromOffset(244,104) end
+    end
+    local function switch(tab,page)
+        if api.closing then return end
+        cancel(); api.pending=nil
+        body.GroupTransparency=0; zoom.Scale=1; inspector.BackgroundTransparency=.035
+        local target={tab=tab,page=math.max(1,page),age=0}
+        if not enabled() then commit(target); return end
+        api.pending=target
+        tween(cardArea,{GroupTransparency=1,Position=UDim2.fromOffset(244,100)},.1)
+    end
+    api.tab=function(name) switch(name,1) end
+    api.page=function(delta)
+        local target=api.pending
+        switch(target and target.tab or selectedInventoryTab,(target and target.page or inventoryPage)+delta)
+    end
+    api.step=function(dt)
+        if inspector.Visible and not shown then api.reveal() end
+        if not inspector.Visible then
+            if shown then cancel(); reset() end
+            shown=false; api.pending=nil; api.closing=nil; return
+        end
+        if api.closing then
+            api.closing+=dt
+            if not enabled() or api.closing>=.18 then finishClose() end
+        elseif api.pending then
+            api.pending.age+=dt
+            if not enabled() or api.pending.age>=.1 then local target=api.pending; api.pending=nil; cancel(); commit(target) end
+        end
+    end
+    connect(inspector:GetPropertyChangedSignal("Visible"),function()
+        if inspector.Visible then api.reveal() else cancel(); api.pending=nil; api.closing=nil; shown=false; reset() end
+    end)
+    table.insert(cleanups,cancel)
+    return api
+end
+controlRows.inspectorMotion=initializeInspectorMotion()
 end
 
 local overrides = {}
