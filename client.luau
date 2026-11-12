@@ -23,6 +23,9 @@ end
 
 -- Every exposed setting has its own description, bounds and keyboard actions.
 local definitions = {
+    { "combatHud", true, "Combat HUD", "Компактно показывает твоё здоровье, оружие, патроны и режим огня. Неизвестные данные отмечены прочерком.", "Настройки" },
+    { "fightFocus", false, "Fight Focus", "На время боя скрывает декоративные эффекты, сворачивает Island и приглушает встроенный Roblox-плеер. Настройки оформления сохраняются. СКМ — назначить бинд.", "Настройки" },
+    { "teamToasts", true, "Team Notices", "Короткие уведомления о тиммейтах: вход/выход, появление рядом и подтверждённая смерть. Без постоянных карточек и спама.", "Настройки" },
     { "mapPlayers", false, "Map Players", "Метки на карте Estonian Border после автопривязки: пройди 60–100 studs вперёд и вбок, открывая M в разных точках. Видны только переданные клиенту персонажи.", "ESP" },
     { "mapNames", true, "Map Names", "Показывать ники рядом с метками игроков на карте.", "ESP" },
     { "mapFriendsOnly", false, "Map Friends Only", "Показывать на карте только тиммейтов из списка Friends.", "ESP" },
@@ -277,7 +280,7 @@ local function saveConfig()
     local nextRevision = revision + 1
     local ok = pcall(function()
         local persistedSettings = {}
-        for key in pairs(schema) do persistedSettings[key] = settings[key] end
+        for key in pairs(schema) do persistedSettings[key] = key~="fightFocus" and settings[key] or false end
         local content = HttpService:JSONEncode({
             version = 5, revision = nextRevision,
             settings = persistedSettings, bindings = bindings, friends = friendNames, music = settings._musicLibrary or {},
@@ -419,7 +422,7 @@ local capture, activeSlider
 local inspectAction
 local function setMenu(visible)
     menu.Visible = visible
-    if visible and settings.motion and not settings.lowFx then
+    if visible and settings.motion and not (settings.lowFx or settings._fightFocus) then
         menu.GroupTransparency = 0.65
         TweenService:Create(menu, TweenInfo.new(0.24, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), { GroupTransparency = 0 }):Play()
     else menu.GroupTransparency = 0 end
@@ -884,7 +887,7 @@ local function initializeLocalMusic()
                 audio.TimePosition = 0
                 activeId = track.id
             elseif audio.IsReady and audio.TimeLength > 0 and audio.TimePosition >= audio.TimeLength - 0.01 then audio.TimePosition = 0 end
-            audio.Volume, audio.Looping = settings.musicVolume / 100, settings.musicRepeat
+            audio.Volume, audio.Looping = settings._fightFocus and 0 or settings.musicVolume / 100, settings.musicRepeat
             audio:Play()
         end)
         if not ok then
@@ -968,7 +971,7 @@ local function initializeLocalMusic()
         local track = current()
         if requested and track and activeId ~= track.id then api.play() end
         if audio then
-            audio.Volume, audio.Looping = settings.musicVolume / 100, settings.musicRepeat
+            audio.Volume, audio.Looping = settings._fightFocus and 0 or settings.musicVolume / 100, settings.musicRepeat
             if requested and loading ~= nil then
                 if audio.IsReady then loading = nil; message = "Играет только у тебя"
                 else loading += tick
@@ -1329,7 +1332,7 @@ local function initializeStudioSkin()
     local api={}
     api.asset=function()
         if asset then return asset end
-        if attempted or loading or not settings.skinTextures or settings.lowFx or not menu.Visible then return nil end
+        if attempted or loading or not settings.skinTextures or (settings.lowFx or settings._fightFocus) or not menu.Visible then return nil end
         attempted=true
         local register=getcustomasset or getsynasset
         if type(register)~="function" or type(readfile)~="function" or type(writefile)~="function" then fail("local images unavailable"); return nil end
@@ -1411,7 +1414,7 @@ local function initializeStudioSkin()
         if not settings.skinTextures then settings._skinStatus.mode="procedural" end
         if registeredAt and settings._skinStatus.mode=="waiting for image" and os.clock()-registeredAt>8 then fail("image unavailable") end
         if not menu.Visible then shadow.Visible=false; return end
-        shadow.Visible=not settings.lowFx
+        shadow.Visible=not (settings.lowFx or settings._fightFocus)
         if shadow.Visible then shadow.Position=menu.Position; shadowScale.Scale=scale.Scale end
     end
     table.insert(cleanups,function() alive=false; table.clear(nodes); shadow:Destroy() end)
@@ -1507,7 +1510,7 @@ local function initializeFriends()
             else
                 local fade=math.clamp((age-1.45)/1.35,0,1)
                 local entrance=math.min(1,age*5)
-                local animated=settings.motion and not settings.lowFx
+                local animated=settings.motion and not (settings.lowFx or settings._fightFocus)
                 effect.shine.FillTransparency=.78+.22*fade
                 effect.shine.OutlineTransparency=.18+.82*fade
                 effect.badge.BackgroundTransparency=.12+.88*fade
@@ -1916,14 +1919,14 @@ local function initializeMusicIsland()
         cancel()
         outgoing,incoming=incoming,outgoing
         incoming.Text=value
-        incoming.Position=UDim2.fromOffset(0,settings.motion and not settings.lowFx and 9 or 0)
-        incoming.TextTransparency=settings.motion and not settings.lowFx and 1 or 0
+        incoming.Position=UDim2.fromOffset(0,settings.motion and not (settings.lowFx or settings._fightFocus) and 9 or 0)
+        incoming.TextTransparency=settings.motion and not (settings.lowFx or settings._fightFocus) and 1 or 0
         subtitle.Text=caption
         local measured=game:GetService("TextService"):GetTextSize(value,14,Enum.Font.GothamBold,Vector2.new(4096,30))
         lineWidth=measured.X
         incoming.Size=UDim2.fromOffset(math.max(280,lineWidth+8),21)
         transitionUntil=clock+0.3
-        if settings.motion and not settings.lowFx then
+        if settings.motion and not (settings.lowFx or settings._fightFocus) then
             for object,goal in pairs({[outgoing]={Position=UDim2.fromOffset(0,-9),TextTransparency=1},[incoming]={Position=UDim2.fromOffset(0,0),TextTransparency=state=="stopped" and .4 or 0}}) do
                 local tween=TweenService:Create(object,TweenInfo.new(.24,Enum.EasingStyle.Quart,Enum.EasingDirection.Out),goal)
                 table.insert(tweens,tween); tween:Play()
@@ -1937,7 +1940,7 @@ local function initializeMusicIsland()
         elapsed+=dt; clock+=dt
         if elapsed<1/30 then return end
         elapsed=0
-        local active=settings.island and settings.islandMusic and data and type(data.title)=="string" and data.title~=""
+        local active=settings.island and settings.islandMusic and not settings._fightFocus and data and type(data.title)=="string" and data.title~=""
             and (not data.updatedAt or os.clock()-data.updatedAt<12)
         root.Visible=active==true
         expanded.Visible=active==true and islandExpanded
@@ -1971,7 +1974,7 @@ local function initializeMusicIsland()
         if state=="paused" then caption="Pause • "..caption elseif state=="stopped" then caption="Stopped • "..tostring(data.artist or "") end
         local nextSignature=value.."\0"..caption.."\0"..state
         if signature~=nextSignature then signature=nextSignature; transition(value,caption,state) end
-        if clock>transitionUntil and settings.motion and not settings.lowFx and lineWidth>clip.AbsoluteSize.X and clip.AbsoluteSize.X>0 then
+        if clock>transitionUntil and settings.motion and not (settings.lowFx or settings._fightFocus) and lineWidth>clip.AbsoluteSize.X and clip.AbsoluteSize.X>0 then
             local overflow=lineWidth-clip.AbsoluteSize.X+8
             local phase=(clock-transitionUntil)% (4+overflow/24*2)
             local offset=phase<2 and 0 or phase<2+overflow/24 and (phase-2)*24 or phase<4+overflow/24 and overflow or math.max(0,overflow-(phase-4-overflow/24)*24)
@@ -2294,7 +2297,7 @@ local function initializeLiveInspector()
         if not inspector.Visible or not api.character then return end
         if inspectTarget and inspectTarget.Character~=api.character then api.needsRebuild=true; return end
         api.elapsed+=dt; api.scan+=dt
-        if api.elapsed<1/(settings.lowFx and 15 or 30) then return end
+        if api.elapsed<1/((settings.lowFx or settings._fightFocus) and 15 or 30) then return end
         api.elapsed=0; sync()
         if api.scan>=1 then
             api.scan=0
@@ -2443,7 +2446,7 @@ local function initializeInventoryArt()
                 if entry.image.IsLoaded then
                     entry.fallback.Text=""
                     local model=entry.card:FindFirstChild("ItemModel"); if model then model.Visible=false end
-                    if settings.motion and not settings.lowFx then TweenService:Create(entry.image,TweenInfo.new(.22),{ImageTransparency=0}):Play() else entry.image.ImageTransparency=0 end
+                    if settings.motion and not (settings.lowFx or settings._fightFocus) then TweenService:Create(entry.image,TweenInfo.new(.22),{ImageTransparency=0}):Play() else entry.image.ImageTransparency=0 end
                     table.remove(api.pending,i)
                 elseif entry.failed or entry.age>3 then
                     entry.image:Destroy(); entry.model(); table.remove(api.pending,i)
@@ -2623,13 +2626,13 @@ local function initializeHudMotion()
         local hoverTween
         local function hover(color)
             if hoverTween then hoverTween:Cancel() end
-            if not settings.motion or settings.lowFx then card.BackgroundColor3=color; return end
+            if not settings.motion or (settings.lowFx or settings._fightFocus) then card.BackgroundColor3=color; return end
             hoverTween=TweenService:Create(card,TweenInfo.new(.2),{BackgroundColor3=color}); hoverTween:Play()
         end
         card.MouseEnter:Connect(function() hover(palette.control) end)
         card.MouseLeave:Connect(function() hover(palette.panel) end)
         card.AncestryChanged:Connect(function() if not card.Parent and hoverTween then hoverTween:Cancel() end end)
-        if not settings.motion or settings.lowFx then return end
+        if not settings.motion or (settings.lowFx or settings._fightFocus) then return end
         local scale=create("UIScale",card,{Scale=.95})
         card.BackgroundTransparency=.65
         local tween=TweenService:Create(scale,TweenInfo.new(.24,Enum.EasingStyle.Quart,Enum.EasingDirection.Out,0,false,((index-1)%9)*.018),{Scale=1})
@@ -2741,9 +2744,9 @@ local treeGroups = {
     ["Мир"] = { "Освещение", "Vegetation", "Visual Studio" },
     ["Камера"] = { "Зум", "Прицел", "Vision", "Viewmodel" },
     ["Бинды"] = { "Инвентарь", "Dynamic Island", "Управление", "Назначения функций" },
-    ["Настройки"] = { "Оформление", "Клиент", "Music", "Performance" },
+    ["Настройки"] = { "Оформление", "Клиент", "Music", "Performance", "Combat" },
 }
-local settingGroup = { mapPlayers="Map", mapNames="Map", mapFriendsOnly="Map", mapTextSize="Map", containerReach="Инвентарь", containerEsp="Loot", auroraEsp="Loot", espStyle = "Цвет и оформление", skinTextures = "Оформление", islandMusic = "Dynamic Island", adaptiveEsp = "Performance", lowFx = "Performance", perfDebug = "Performance", yandexPlay = "Music", spotifyPlay = "Music", musicPlay = "Music", musicVolume = "Music", musicRepeat = "Music", musicIndex = "Music", noRecoil = "Weapon Tuning", aimEase = "Область и плавность", aimFilter = "Область и плавность", graphics = "Visual Studio", gfxTier = "Visual Studio", gfxLook = "Visual Studio", echo = "Оформление", echoDelay = "Оформление", echoFreeze = "Оформление", motion = "Оформление", killFx = "Оформление", crossStyle = "Прицел", crossWidth = "Прицел", noLeaves = "Vegetation", noGrass = "Vegetation", corpseEsp = "Loot", itemEsp = "Loot", lootThrough = "Loot", lootRange = "Loot", lootTextSize = "Loot",
+local settingGroup = { combatHud="Combat", fightFocus="Combat", teamToasts="Combat", mapPlayers="Map", mapNames="Map", mapFriendsOnly="Map", mapTextSize="Map", containerReach="Инвентарь", containerEsp="Loot", auroraEsp="Loot", espStyle = "Цвет и оформление", skinTextures = "Оформление", islandMusic = "Dynamic Island", adaptiveEsp = "Performance", lowFx = "Performance", perfDebug = "Performance", yandexPlay = "Music", spotifyPlay = "Music", musicPlay = "Music", musicVolume = "Music", musicRepeat = "Music", musicIndex = "Music", noRecoil = "Weapon Tuning", aimEase = "Область и плавность", aimFilter = "Область и плавность", graphics = "Visual Studio", gfxTier = "Visual Studio", gfxLook = "Visual Studio", echo = "Оформление", echoDelay = "Оформление", echoFreeze = "Оформление", motion = "Оформление", killFx = "Оформление", crossStyle = "Прицел", crossWidth = "Прицел", noLeaves = "Vegetation", noGrass = "Vegetation", corpseEsp = "Loot", itemEsp = "Loot", lootThrough = "Loot", lootRange = "Loot", lootTextSize = "Loot",
     noVisor = "Vision", cameraFov = "Vision", cameraFovValue = "Vision",
     viewmodel = "Viewmodel", vmX = "Viewmodel", vmY = "Viewmodel", vmZ = "Viewmodel", sticky = "Наведение", noFog = "Освещение", bubbles = "Оформление", snow = "Оформление", snowDrifts = "Оформление", friendHats = "Оформление", espFps = "Цвет и оформление", adaptiveText = "Подписи",
     aim = "Наведение", aimPlayers = "Цели и проверки", aimDummies = "Цели и проверки",
@@ -2878,7 +2881,7 @@ table.insert(cleanups, function() for _, connection in ipairs(graphConnections) 
 local graphTweens, shimmerTweens = {}, {}
 local shimmerEnabled
 local function syncShimmers()
-    local enabled=menu.Visible and settings.motion and not settings.lowFx
+    local enabled=menu.Visible and settings.motion and not (settings.lowFx or settings._fightFocus)
     if enabled==shimmerEnabled then return end
     shimmerEnabled=enabled
     for _,tween in ipairs(shimmerTweens) do if enabled then tween:Play() else tween:Pause() end end
@@ -3060,7 +3063,7 @@ local function node(label, x, y, width, selected, callback)
         BorderSizePixel = 0,
     })
     rounded(indicator, 3)
-    if selected and settings.motion and not settings.lowFx then
+    if selected and settings.motion and not (settings.lowFx or settings._fightFocus) then
         local gradient = object:FindFirstChildOfClass("UIGradient")
         gradient.Offset = Vector2.new(-0.25, 0)
         local shimmer = TweenService:Create(gradient, TweenInfo.new(2.4, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true), { Offset = Vector2.new(0.25, 0) })
@@ -3150,7 +3153,7 @@ renderGraph = function()
         if category == selectedCategory then categoryY = 35 + (index - 1) * 52 end
     end
     local groups = treeGroups[selectedCategory] or {}
-    if selectedCategory == "Настройки" then groups = { "Оформление", "Инвентарь", "Dynamic Island", "Клиент", "Music", "Performance" } end
+    if selectedCategory == "Настройки" then groups = { "Оформление", "Инвентарь", "Dynamic Island", "Клиент", "Music", "Performance", "Combat" } end
     local selectedY = 90
     for index, group in ipairs(groups) do
         local y = 35 + (index - 1) * 88
@@ -3392,7 +3395,7 @@ end
 do
 local function initializeProfiles()
     local api={items={},revision=0,serial=0,status="Готово",disk=canSave}
-    local excluded={musicPlay=true,spotifyPlay=true,yandexPlay=true,echoFreeze=true,perfDebug=true}
+    local excluded={fightFocus=true,musicPlay=true,spotifyPlay=true,yandexPlay=true,echoFreeze=true,perfDebug=true}
     local function nameOf(value)
         if type(value)~="string" then return nil end
         value=value:match("^%s*(.-)%s*$")
@@ -3614,7 +3617,7 @@ local function initializeProfilesUI()
         selected=api.find(selected) and selected or nil; confirm=nil; sharing=false; renaming=false
         window.Visible=true; shield.Visible=true; refresh()
         if openTween then openTween:Cancel() end
-        if settings.motion and not settings.lowFx then window.GroupTransparency=1; openTween=TweenService:Create(window,TweenInfo.new(.22),{GroupTransparency=0}); openTween:Play() else window.GroupTransparency=0 end
+        if settings.motion and not (settings.lowFx or settings._fightFocus) then window.GroupTransparency=1; openTween=TweenService:Create(window,TweenInfo.new(.22),{GroupTransparency=0}); openTween:Play() else window.GroupTransparency=0 end
     end
     api.close=function() if openTween then openTween:Cancel(); openTween=nil end; window.Visible=false; shield.Visible=false; confirm=nil end
     connect(close.Activated,api.close); connect(launcher.Activated,api.open)
@@ -3701,7 +3704,7 @@ local function initializeInspectorMotion()
     local zoom=create("UIScale",body,{Scale=1})
     for _,child in ipairs(inspector:GetChildren()) do if child~=body and child:IsA("GuiObject") then child.Parent=body end end
     local shown=inspector.Visible
-    local function enabled() return settings.motion and not settings.lowFx end
+    local function enabled() return settings.motion and not (settings.lowFx or settings._fightFocus) end
     local function cancel()
         for _,tween in ipairs(api.tweens) do tween:Cancel() end; table.clear(api.tweens)
     end
@@ -3773,6 +3776,191 @@ local function initializeInspectorMotion()
     return api
 end
 controlRows.inspectorMotion=initializeInspectorMotion()
+end
+
+do
+local function initializeCombatUI()
+    settings.fightFocus=false; settings._fightFocus=false
+    local api={elapsed=1,teamElapsed=1,states={},notices={},clock=0}
+    local focus=false
+    local priorExpanded
+    local hud=create("CanvasGroup",gui,{Name="CombatHUD",AnchorPoint=Vector2.new(.5,1),Position=UDim2.new(.5,0,1,-160),Size=UDim2.fromOffset(390,102),BackgroundColor3=palette.background,BackgroundTransparency=.08,BorderSizePixel=0,Visible=false,ZIndex=12})
+    rounded(hud,18); local rim=stroke(hud,palette.accent); rim.Transparency=.68
+    local fit=create("UIScale",hud,{Scale=1})
+    local title=text(hud,"COMBAT",{Position=UDim2.fromOffset(16,10),Size=UDim2.fromOffset(90,16),TextSize=9,TextColor3=palette.accent,TextXAlignment=Enum.TextXAlignment.Left})
+    local health=text(hud,"— HP",{Position=UDim2.fromOffset(16,29),Size=UDim2.fromOffset(110,27),TextSize=21,Font=Enum.Font.GothamBold,TextXAlignment=Enum.TextXAlignment.Left})
+    local weapon=text(hud,"—",{Position=UDim2.fromOffset(143,30),Size=UDim2.fromOffset(231,23),TextSize=14,TextTruncate=Enum.TextTruncate.AtEnd,TextXAlignment=Enum.TextXAlignment.Left})
+    local ammo=text(hud,"Патроны —",{Position=UDim2.fromOffset(143,55),Size=UDim2.fromOffset(231,18),TextSize=11,TextXAlignment=Enum.TextXAlignment.Left})
+    local track=create("Frame",hud,{Position=UDim2.fromOffset(16,67),Size=UDim2.fromOffset(110,4),BackgroundColor3=palette.control,BorderSizePixel=0}); rounded(track,3)
+    local fill=create("Frame",track,{Size=UDim2.fromScale(1,1),BackgroundColor3=palette.accent,BorderSizePixel=0}); rounded(fill,3)
+    local warning=text(hud,"",{Position=UDim2.fromOffset(16,80),Size=UDim2.fromOffset(358,14),TextSize=9,TextColor3=Color3.fromRGB(245,135,135),TextXAlignment=Enum.TextXAlignment.Left})
+    local focusButton=button(hud,"Focus OFF",UDim2.fromOffset(278,7),UDim2.fromOffset(96,21))
+    focusButton.TextSize=9
+    connect(focusButton.Activated,function() setValue("fightFocus",not settings.fightFocus) end)
+    local focusBadge=button(gui,"FOCUS · выключить",UDim2.new(.5,-80,0,120),UDim2.fromOffset(160,26)); focusBadge.Visible=false
+    connect(focusBadge.Activated,function() setValue("fightFocus",false) end)
+    describe(focusButton,"Боевой фокус: временно убрать декор и приглушить встроенный плеер. Назначь клавишу через СКМ на Fight Focus в меню.")
+    local noticeRoot=create("Frame",gui,{Name="TeamNotices",AnchorPoint=Vector2.new(1,0),Position=UDim2.new(1,-146,0,205),Size=UDim2.fromOffset(290,220),BackgroundTransparency=1,ZIndex=15})
+    local noticeFit=create("UIScale",noticeRoot,{Scale=1})
+    local function number(value)
+        return type(value)=="number" and value==value and math.abs(value)<1e8 and value or nil
+    end
+    local function stat(object,keys)
+        if not object then return nil end
+        for _,key in ipairs(keys) do
+            local value=number(object:GetAttribute(key))
+            if value then return value end
+            local child=object:FindFirstChild(key)
+            if child and (child:IsA("NumberValue") or child:IsA("IntValue")) then value=number(child.Value); if value then return value end end
+        end
+    end
+    local function referenced(object)
+        return object and object:IsA("ObjectValue") and object.Value or object
+    end
+    api.read=function()
+        local character=player.Character
+        local human=character and character:FindFirstChildOfClass("Humanoid")
+        local hp=human and number(human.Health)
+        local maximum=human and number(human.MaxHealth)
+        local records=game:GetService("ReplicatedStorage"):FindFirstChild("Players")
+        local record=records and records:FindFirstChild(player.Name)
+        local status=record and record:FindFirstChild("Status")
+        local variables=status and status:FindFirstChild("GameplayVariables")
+        local ref=variables and variables:FindFirstChild("EquippedTool")
+        local held=referenced(ref) or heldItem(character)
+        local model=referenced(held)
+        local properties=model and model:FindFirstChild("ItemProperties")
+        local label=properties and (properties:GetAttribute("CallSign") or properties:GetAttribute("ItemName")) or model and (model:GetAttribute("DisplayName") or model.Name)
+        local mode=held and held:GetAttribute("FireMode") or model and model:GetAttribute("FireMode")
+        local magazine=held and held:FindFirstChild("Magazine")
+        magazine=referenced(magazine)
+        local current=stat(held,{"Ammo","CurrentAmmo","AmmoCount","Bullets"}) or stat(magazine,{"Ammo","CurrentAmmo","AmmoCount","Bullets"})
+        local capacity=stat(held,{"MaxAmmo","MagazineSize","AmmoCapacity"}) or stat(magazine,{"MaxAmmo","MagazineSize","AmmoCapacity"})
+        if current and (current<0 or current%1~=0) then current=nil end
+        if capacity and (capacity<=0 or capacity%1~=0) then capacity=nil end
+        if current and capacity and current>capacity then current,capacity=nil,nil end
+        return {hp=hp,maximum=maximum,weapon=type(label)=="string" and label or nil,mode=type(mode)=="string" and mode:sub(1,24) or nil,ammo=current,capacity=capacity}
+    end
+    local function drop(index)
+        api.notices[index].card:Destroy(); table.remove(api.notices,index)
+    end
+    api.notify=function(name,message,kind)
+        if not settings.teamToasts then return false end
+        local key=name..":"..kind
+        for _,item in ipairs(api.notices) do if item.key==key then return false end end
+        if #api.notices>=3 then drop(1) end
+        local card=create("CanvasGroup",noticeRoot,{Name="TeamNotice",Size=UDim2.fromOffset(290,62),BackgroundColor3=palette.background,BackgroundTransparency=.05,BorderSizePixel=0,GroupTransparency=1})
+        rounded(card,14); local edge=stroke(card,palette.accent); edge.Transparency=.65
+        local dot=create("Frame",card,{Position=UDim2.fromOffset(14,17),Size=UDim2.fromOffset(6,6),BorderSizePixel=0,BackgroundColor3=kind=="death" and Color3.fromRGB(240,130,130) or palette.accent}); rounded(dot,4)
+        text(card,"@"..name,{Position=UDim2.fromOffset(29,10),Size=UDim2.fromOffset(245,20),TextSize=12,TextTruncate=Enum.TextTruncate.AtEnd,TextXAlignment=Enum.TextXAlignment.Left})
+        text(card,message,{Position=UDim2.fromOffset(29,32),Size=UDim2.fromOffset(245,18),TextSize=10,TextColor3=palette.muted,TextXAlignment=Enum.TextXAlignment.Left})
+        table.insert(api.notices,{key=key,card=card,edge=edge,age=0})
+        return true
+    end
+    api.scanTeam=function()
+        local present={}
+        local mine=player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+        for key in pairs(friendNames) do if not api.states[key] then api.states[key]={present=false,seed=true} end end
+        for _,other in ipairs(Players:GetPlayers()) do
+            local key=string.lower(other.Name)
+            if other~=player and friendNames[key] then
+                present[key]=true
+                local character=other.Character
+                local human=character and character:FindFirstChildOfClass("Humanoid")
+                local hp=human and number(human.Health)
+                local root=character and character:FindFirstChild("HumanoidRootPart")
+                local distance=mine and root and (mine.Position-root.Position).Magnitude
+                local state=api.states[key]
+                if not state.present and not state.seed then api.notify(other.Name,"Тиммейт присоединился к серверу","join") end
+                if state.character==character and hp and hp<=0 and state.hp and state.hp>0 then api.notify(other.Name,"Тиммейт погиб","death") end
+                if distance and hp and hp>0 then
+                    local near=state.near
+                    if distance<=80 then near=true elseif distance>=110 then near=false end
+                    if state.near~=nil and near~=state.near and api.clock-(state.lastRange or -30)>20 then
+                        if near then api.notify(other.Name,"Рядом с тобой","near") else api.notify(other.Name,"Отошёл от тебя","far") end
+                        state.lastRange=api.clock
+                    end
+                    state.near=near
+                else state.near=nil end
+                state.character,state.hp,state.present,state.seed=character,hp,true,false
+            end
+        end
+        for key,state in pairs(api.states) do
+            if not friendNames[key] then api.states[key]=nil
+            elseif not present[key] then
+                if state.present then api.notify(key,"Вышел с сервера","leave") end
+                state.present=false; state.character=nil; state.hp=nil; state.near=nil; state.seed=false
+            end
+        end
+    end
+    local targetRatio,ratio=0,0
+    api.step=function(dt)
+        api.clock+=dt
+        local desired=settings.fightFocus==true
+        if desired~=focus then
+            focus=desired; settings._fightFocus=focus
+            if focus then
+                priorExpanded=islandExpanded; islandExpanded=false; menu.Visible=false
+                controlRows.profiles.close()
+                if inspector.Visible then controlRows.inspectorMotion.close() end
+            elseif priorExpanded~=nil then islandExpanded=priorExpanded; priorExpanded=nil end
+        end
+        if focus then islandExpanded=false end
+        focusBadge.Visible=focus and not settings.combatHud
+        focusBadge.TextColor3=palette.accent
+        local hidden=menu.Visible or (controlRows.mapOverlay and controlRows.mapOverlay.isOpen())==true
+        hud.Visible=settings.combatHud and not hidden
+        noticeRoot.Visible=not hidden
+        local camera=workspace.CurrentCamera
+        if camera then
+            local factor=math.min(1,math.max(.25,(camera.ViewportSize.X-24)/420),math.max(.25,(camera.ViewportSize.Y-24)/600))
+            fit.Scale,noticeFit.Scale=factor,factor
+            noticeRoot.Position=UDim2.new(1,camera.ViewportSize.X<700 and -16 or -146,0,camera.ViewportSize.Y<600 and 110 or 205)
+        end
+        api.elapsed+=dt; api.teamElapsed+=dt
+        if settings.combatHud and api.elapsed>=.1 then
+            api.elapsed=0
+            local data=api.read(); api.data=data
+            targetRatio=data.hp and data.maximum and data.maximum>0 and math.clamp(data.hp/data.maximum,0,1) or 0
+            health.Text=data.hp and (tostring(math.floor(math.max(0,data.hp))).." HP") or "— HP"
+            weapon.Text=data.weapon or "Нет оружия"
+            ammo.Text="Патроны "..(data.ammo and tostring(data.ammo)..(data.capacity and " / "..data.capacity or "") or "—").."  ·  "..(data.mode or "—")
+            local lowHp=data.hp and data.maximum and data.maximum>0 and targetRatio<=.25
+            warning.Text=data.hp and data.hp<=0 and "ПЕРСОНАЖ ПОГИБ" or lowHp and "НИЗКОЕ ЗДОРОВЬЕ" or data.ammo and data.ammo<=3 and "МАЛО ПАТРОНОВ" or ""
+            local tint=lowHp and Color3.fromRGB(245,135,135) or palette.accent
+            track.Visible=data.hp~=nil and data.maximum~=nil and data.maximum>0
+            fill.BackgroundColor3,health.TextColor3,rim.Color,title.TextColor3=tint,tint,palette.accent,palette.accent
+            hud.BackgroundColor3=palette.background
+            focusButton.Text=focus and "Focus ON" or "Focus OFF"; focusButton.TextColor3=focus and palette.accent or palette.muted
+        end
+        ratio=settings.motion and ratio+(targetRatio-ratio)*(1-math.exp(-15*dt)) or targetRatio
+        fill.Size=UDim2.fromScale(ratio,1)
+        if settings.teamToasts and api.teamElapsed>=.5 then api.teamElapsed=0; api.scanTeam()
+        elseif not settings.teamToasts then table.clear(api.states); while #api.notices>0 do drop(#api.notices) end end
+        for index=#api.notices,1,-1 do
+            local item=api.notices[index]; item.age+=dt
+            if item.age>=4.5 then drop(index)
+            else
+                local alpha=math.clamp(item.age/.24,0,1)*math.clamp((4.5-item.age)/.3,0,1)
+                if not settings.motion or settings.lowFx then alpha=1 end
+                item.card.GroupTransparency=1-alpha
+                local targetY=(index-1)*70
+                item.y=item.y or targetY
+                item.y=settings.motion and item.y+(targetY-item.y)*(1-math.exp(-18*dt)) or targetY
+                item.card.Position=UDim2.fromOffset((1-alpha)*20,item.y)
+                item.card.BackgroundColor3=palette.background; item.edge.Color=palette.accent
+            end
+        end
+    end
+    api.hud=hud
+    table.insert(cleanups,function()
+        settings._fightFocus=false; settings.fightFocus=false
+        while #api.notices>0 do drop(#api.notices) end
+        table.clear(api.states); hud:Destroy(); noticeRoot:Destroy(); focusBadge:Destroy()
+    end)
+    return api
+end
+controlRows.combat=initializeCombatUI()
 end
 
 local overrides = {}
@@ -4104,7 +4292,7 @@ renderLabels=function(screen,candidate,low,high,camera,color)
         screen.hpFill.BackgroundColor3=hpColor
         if screen.shownHp~=fraction then
             if screen.healthTween then screen.healthTween:Cancel(); screen.healthTween=nil end
-            if screen.shownHp and settings.motion and not settings.lowFx then
+            if screen.shownHp and settings.motion and not (settings.lowFx or settings._fightFocus) then
                 screen.healthTween=TweenService:Create(screen.hpFill,TweenInfo.new(.18,Enum.EasingStyle.Quart,Enum.EasingDirection.Out),{Size=UDim2.fromScale(fraction,1)})
                 screen.healthTween:Play()
             else screen.hpFill.Size=UDim2.fromScale(fraction,1) end
@@ -4545,7 +4733,7 @@ local function initializeWinter()
     return function(dt)
         time += dt
         scanElapsed += dt
-        decoration.Visible = menu.Visible and not settings.lowFx
+        decoration.Visible = menu.Visible and not (settings.lowFx or settings._fightFocus)
         if decoration.Visible then
             decorElapsed += dt
             if settings.motion then decorTime += dt end
@@ -4607,7 +4795,7 @@ local function initializeWinter()
             scanElapsed = 0
             local seen = {}
             local hatCount=0
-            if settings.friendHats and not settings.lowFx and next(friendNames) ~= nil then
+            if settings.friendHats and not (settings.lowFx or settings._fightFocus) and next(friendNames) ~= nil then
                 for _, other in ipairs(Players:GetPlayers()) do
                     local character = isFriend(other) and other.Character
                     local head = character and character:FindFirstChild("Head")
@@ -5120,7 +5308,7 @@ local function initializeSoulFx()
         entry.model:Destroy()
     end
     local function spawn(model)
-        if not settings.killFx or not model or not model.Parent then return false end
+        if not (settings.killFx and not settings._fightFocus) or not model or not model.Parent then return false end
         if #active >= 4 then remove(table.remove(active, 1)) end
         local ghost = create("Model", workspace, { Name = "OktanSoul" })
         local entry = { model = ghost, tweens = {}, expires = elapsed + 1.8 }
@@ -5166,7 +5354,7 @@ local function initializeSoulFx()
         if not humanoid or humanoid.Health <= 0 or watched[humanoid] or not humanoid.Died then return end
         watched[humanoid] = humanoid.Died:Connect(function()
             if watched[humanoid] then watched[humanoid]:Disconnect(); watched[humanoid] = nil end
-            if not settings.killFx then return end
+            if not (settings.killFx and not settings._fightFocus) then return end
             if ownsKill(humanoid, model, victim) then spawn(model)
             elseif #pending < 16 then table.insert(pending, { humanoid = humanoid, model = model, victim = victim, expires = elapsed + 0.8 }) end
         end)
@@ -5180,7 +5368,7 @@ local function initializeSoulFx()
         end
         if poll >= 0.5 then
             poll = 0
-            if settings.killFx then
+            if (settings.killFx and not settings._fightFocus) then
                 for _, victim in ipairs(Players:GetPlayers()) do if victim ~= player then watch(victim) end end
             end
             for humanoid, connection in pairs(watched) do
@@ -5189,15 +5377,15 @@ local function initializeSoulFx()
         end
         for i = #pending, 1, -1 do
             local death = pending[i]
-            if settings.killFx and death.model.Parent and ownsKill(death.humanoid, death.model, death.victim) then
+            if (settings.killFx and not settings._fightFocus) and death.model.Parent and ownsKill(death.humanoid, death.model, death.victim) then
                 spawn(death.model); table.remove(pending, i)
-            elseif not settings.killFx or not death.model.Parent or elapsed >= death.expires then
+            elseif not (settings.killFx and not settings._fightFocus) or not death.model.Parent or elapsed >= death.expires then
                 table.remove(pending, i)
                 settings._soulStatus = "No confirmed killer attribution; effect skipped"
             end
         end
         for i = #active, 1, -1 do
-            if not settings.killFx or elapsed >= active[i].expires then remove(table.remove(active, i)) end
+            if not (settings.killFx and not settings._fightFocus) or elapsed >= active[i].expires then remove(table.remove(active, i)) end
         end
     end
     table.insert(cleanups, function()
@@ -5330,7 +5518,7 @@ local function initializeChronoEcho()
     end
     return { step = function(dt)
         elapsed += dt
-        if not settings.echo then
+        if not settings.echo or settings._fightFocus then
             if panel then clear() end
             settings._echoStatus = "Off"
             return
@@ -5709,6 +5897,7 @@ end
 
 local renderState = { elapsed = 1, visualElapsed = 1, perfElapsed = 0, perfFrames = 0, perfTotal = 0, perfEsp = 0, perfCamera = 0, perfPeak = 0 }
 RunService:BindToRenderStep(renderName, Enum.RenderPriority.Last.Value + 1, function(dt)
+    controlRows.combat.step(dt)
     local perfStarted = settings.perfDebug and os.clock()
     local camera = workspace.CurrentCamera
     controlRows.musicIsland.step(dt)
@@ -5751,8 +5940,8 @@ RunService:BindToRenderStep(renderName, Enum.RenderPriority.Last.Value + 1, func
         controlRows.bindShield.Visible=false; controlRows.bindGesture.action=nil
         pendingNumeric = nil
     end
-    blurEffect.Size = menu.Visible and not settings.lowFx and settings.blur or 0
-    blurEffect.Enabled = menu.Visible and not settings.lowFx and settings.blur > 0
+    blurEffect.Size = menu.Visible and not (settings.lowFx or settings._fightFocus) and settings.blur or 0
+    blurEffect.Enabled = menu.Visible and not (settings.lowFx or settings._fightFocus) and settings.blur > 0
     if tooltip.Visible then
         local mouse = Input:GetMouseLocation()
         local viewport = camera and camera.ViewportSize or Vector2.new(1280, 720)
