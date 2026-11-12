@@ -23,6 +23,8 @@ end
 
 -- Every exposed setting has its own description, bounds and keyboard actions.
 local definitions = {
+    { "chamsStyle", 1, "Chams Style", "1 — Soft: лёгкая заливка и мягкий контур; 2 — Pearl: только светлый контур; 3 — Classic. Цвет и прозрачность задаются отдельно.", "ESP", 1, 3 },
+    { "skeletonStyle", 1, "Skeleton Style", "1 — Silk: округлые линии с тёмной подложкой; 2 — Jointed: добавить точки суставов; 3 — Classic. Light Menu скрывает точки суставов.", "ESP", 1, 3 },
     { "combatHud", true, "Combat HUD", "Компактно показывает твоё здоровье, оружие, патроны и режим огня. Неизвестные данные отмечены прочерком.", "Настройки" },
     { "fightFocus", false, "Fight Focus", "На время боя скрывает декоративные эффекты, сворачивает Island и приглушает встроенный Roblox-плеер. Настройки оформления сохраняются. СКМ — назначить бинд.", "Настройки" },
     { "teamToasts", true, "Team Notices", "Короткие уведомления о тиммейтах: вход/выход, появление рядом и подтверждённая смерть. Без постоянных карточек и спама.", "Настройки" },
@@ -2740,13 +2742,13 @@ describe(search, "Ищет по всем разделам, названиям и
 
 local treeGroups = {
     ["Наведение"] = { "Наведение", "Цели и проверки", "Область и плавность", "Weapon Tuning" },
-    ESP = { "Общее", "Подписи", "Геометрия", "Цвет и оформление", "Loot" , "Map" },
+    ESP = { "Общее", "Подписи", "Chams", "Skeleton", "Геометрия", "Цвет и оформление", "Loot", "Map" },
     ["Мир"] = { "Освещение", "Vegetation", "Visual Studio" },
     ["Камера"] = { "Зум", "Прицел", "Vision", "Viewmodel" },
     ["Бинды"] = { "Инвентарь", "Dynamic Island", "Управление", "Назначения функций" },
     ["Настройки"] = { "Оформление", "Клиент", "Music", "Performance", "Combat" },
 }
-local settingGroup = { combatHud="Combat", fightFocus="Combat", teamToasts="Combat", mapPlayers="Map", mapNames="Map", mapFriendsOnly="Map", mapTextSize="Map", containerReach="Инвентарь", containerEsp="Loot", auroraEsp="Loot", espStyle = "Цвет и оформление", skinTextures = "Оформление", islandMusic = "Dynamic Island", adaptiveEsp = "Performance", lowFx = "Performance", perfDebug = "Performance", yandexPlay = "Music", spotifyPlay = "Music", musicPlay = "Music", musicVolume = "Music", musicRepeat = "Music", musicIndex = "Music", noRecoil = "Weapon Tuning", aimEase = "Область и плавность", aimFilter = "Область и плавность", graphics = "Visual Studio", gfxTier = "Visual Studio", gfxLook = "Visual Studio", echo = "Оформление", echoDelay = "Оформление", echoFreeze = "Оформление", motion = "Оформление", killFx = "Оформление", crossStyle = "Прицел", crossWidth = "Прицел", noLeaves = "Vegetation", noGrass = "Vegetation", corpseEsp = "Loot", itemEsp = "Loot", lootThrough = "Loot", lootRange = "Loot", lootTextSize = "Loot",
+local settingGroup = { chamsStyle="Chams", skeletonStyle="Skeleton", combatHud="Combat", fightFocus="Combat", teamToasts="Combat", mapPlayers="Map", mapNames="Map", mapFriendsOnly="Map", mapTextSize="Map", containerReach="Инвентарь", containerEsp="Loot", auroraEsp="Loot", espStyle = "Цвет и оформление", skinTextures = "Оформление", islandMusic = "Dynamic Island", adaptiveEsp = "Performance", lowFx = "Performance", perfDebug = "Performance", yandexPlay = "Music", spotifyPlay = "Music", musicPlay = "Music", musicVolume = "Music", musicRepeat = "Music", musicIndex = "Music", noRecoil = "Weapon Tuning", aimEase = "Область и плавность", aimFilter = "Область и плавность", graphics = "Visual Studio", gfxTier = "Visual Studio", gfxLook = "Visual Studio", echo = "Оформление", echoDelay = "Оформление", echoFreeze = "Оформление", motion = "Оформление", killFx = "Оформление", crossStyle = "Прицел", crossWidth = "Прицел", noLeaves = "Vegetation", noGrass = "Vegetation", corpseEsp = "Loot", itemEsp = "Loot", lootThrough = "Loot", lootRange = "Loot", lootTextSize = "Loot",
     noVisor = "Vision", cameraFov = "Vision", cameraFovValue = "Vision",
     viewmodel = "Viewmodel", vmX = "Viewmodel", vmY = "Viewmodel", vmZ = "Viewmodel", sticky = "Наведение", noFog = "Освещение", bubbles = "Оформление", snow = "Оформление", snowDrifts = "Оформление", friendHats = "Оформление", espFps = "Цвет и оформление", adaptiveText = "Подписи",
     aim = "Наведение", aimPlayers = "Цели и проверки", aimDummies = "Цели и проверки",
@@ -2755,8 +2757,8 @@ local settingGroup = { combatHud="Combat", fightFocus="Combat", teamToasts="Comb
     fovHue = "Область и плавность", fovSaturation = "Область и плавность", fovValue = "Область и плавность",
     esp = "Общее", espPlayers = "Общее", espDummies = "Общее", through = "Общее", range = "Общее",
     names = "Подписи", health = "Подписи", distance = "Подписи", weapon = "Подписи", textSize = "Подписи",
-    chams = "Геометрия", boxes = "Геометрия", corners = "Геометрия",
-    skeleton = "Геометрия", tracers = "Геометрия", healthBar = "Геометрия",
+    chams = "Chams", boxes = "Геометрия", corners = "Геометрия",
+    skeleton = "Skeleton", tracers = "Геометрия", healthBar = "Геометрия",
     espHue = "Цвет и оформление", espSaturation = "Цвет и оформление", espValue = "Цвет и оформление",
     espOpacity = "Цвет и оформление", fillOpacity = "Цвет и оформление", lineWidth = "Цвет и оформление",
     bright = "Освещение", clock = "Освещение", hour = "Освещение",
@@ -3032,6 +3034,7 @@ local function gconnect(event, callback)
     table.insert(graphConnections, event:Connect(callback))
 end
 local function wire(a, b)
+    if b.X>=588 then return end
     local reach = (b.X - a.X) * 0.5
     local path = create("Path2D", controlRows.graphCanvas, {
         Name = "BranchCurve", Color3 = Color3.fromRGB(104, 116, 136),
@@ -3043,7 +3046,9 @@ local function wire(a, b)
     })
 end
 local function node(label, x, y, width, selected, callback)
-    local object = button(controlRows.graphCanvas, label, UDim2.fromOffset(x, y), UDim2.fromOffset(width, 34))
+    local parent=controlRows.graphCanvas
+    if x>=588 and controlRows.leafCanvas then parent=controlRows.leafCanvas; x-=566 end
+    local object = button(parent, label, UDim2.fromOffset(x, y), UDim2.fromOffset(width, 34))
     object.BackgroundTransparency = selected and 0.08 or 0.18
     object.TextColor3 = selected and palette.accent or palette.text
     object.TextSize = 13
@@ -3106,6 +3111,8 @@ renderGraph = function()
     table.clear(graphBindingLabels)
     controlRows.studio.clearNodes()
     graph:ClearAllChildren()
+    graph.CanvasPosition=Vector2.new(0,0); graph.ScrollingEnabled=false; graph.ScrollBarThickness=0
+    controlRows.leafCanvas=nil
     tooltip.Visible=false; hovered=nil
     controlRows.graphCanvas=create("Frame",graph,{Name="TreeCanvas",BackgroundTransparency=1,Size=UDim2.fromOffset(870,470),BorderSizePixel=0})
     for _, page in pairs(pages) do page.Visible = false end
@@ -3116,7 +3123,7 @@ renderGraph = function()
     local categories = { "Наведение", "ESP", "Мир", "Камера", "Настройки", "Friends", "Бинды" }
     node("OKTAN", 12, 212, 105, true, function() selectedCategory = "Наведение"; selectedGroup = "Наведение"; renderGraph() end)
     for index, category in ipairs(categories) do
-        local y = 18 + (index - 1) * 52
+        local y = 45 + (index - 1) * 54
         wire(Vector2.new(117, 229), Vector2.new(174, y + 17))
         node(displayNames[category] or category, 174, y, 130, category == selectedCategory, function()
             graph.CanvasPosition = Vector2.new(0, 0)
@@ -3150,13 +3157,14 @@ renderGraph = function()
     end
     local categoryY = 35
     for index, category in ipairs(categories) do
-        if category == selectedCategory then categoryY = 35 + (index - 1) * 52 end
+        if category == selectedCategory then categoryY = 62 + (index - 1) * 54 end
     end
     local groups = treeGroups[selectedCategory] or {}
-    if selectedCategory == "Настройки" then groups = { "Оформление", "Инвентарь", "Dynamic Island", "Клиент", "Music", "Performance", "Combat" } end
+    if selectedCategory == "Настройки" then groups = { "Combat", "Оформление", "Dynamic Island", "Инвентарь", "Music", "Performance", "Клиент" } end
     local selectedY = 90
     for index, group in ipairs(groups) do
-        local y = 35 + (index - 1) * 88
+        local gap=math.min(72,390/math.max(1,#groups-1))
+        local y = (465-((#groups-1)*gap+34))*.5 + (index - 1)*gap
         wire(Vector2.new(304, categoryY), Vector2.new(350, y + 17))
         node(displayNames[group] or group, 350, y, 170, group == selectedGroup, function()
             graph.CanvasPosition = Vector2.new(0, 0)
@@ -3165,10 +3173,13 @@ renderGraph = function()
         end)
         if group == selectedGroup then selectedY = y + 17 end
     end
+    local leafScroll=create("ScrollingFrame",controlRows.graphCanvas,{Name="FunctionList",Position=UDim2.fromOffset(566,14),Size=UDim2.fromOffset(298,438),BackgroundTransparency=1,BorderSizePixel=0,ScrollBarThickness=3,ScrollBarImageColor3=palette.accent,ScrollingDirection=Enum.ScrollingDirection.Y,CanvasSize=UDim2.fromOffset(280,438)})
+    controlRows.leafCanvas=create("Frame",leafScroll,{Name="FunctionCanvas",Size=UDim2.fromOffset(280,438),BackgroundTransparency=1,BorderSizePixel=0})
+    wire(Vector2.new(520,selectedY),Vector2.new(566,233))
     local leaves = {}
     for _, entry in ipairs(controlRows) do
         local definition = schema[entry.key]
-        local hiddenColorChannel = entry.key:match("Saturation$") or entry.key:match("Value$")
+        local hiddenColorChannel = entry.key:match("Saturation$") or entry.key:match("Value$") and schema[entry.key:gsub("Value$","Hue")]
         local matches = query ~= "" and normalizeQuery(definition[3] .. " " .. definition[4] .. " " .. entry.key):find(query, 1, true)
         if not hiddenColorChannel and (matches or (query == "" and (entry.page == selectedCategory or (selectedCategory == "Настройки" and entry.page == "Бинды")) and settingGroup[entry.key] == selectedGroup)) then
             table.insert(leaves, entry)
@@ -3177,10 +3188,11 @@ renderGraph = function()
     if query ~= "" and #leaves == 0 then
         text(controlRows.graphCanvas, "Ничего не найдено", { Position = UDim2.fromOffset(588, 24), Size = UDim2.fromOffset(258, 40), TextColor3 = palette.muted })
     end
+    local leafStart=math.max(14,(438-(#leaves*40-6))*.5)
     for index, entry in ipairs(leaves) do
         local definition = schema[entry.key]
-        local y = 14 + (index - 1) * 40
-        wire(Vector2.new(520, selectedY), Vector2.new(588, y + 17))
+        local y = leafStart + (index - 1) * 40
+        create("Frame",controlRows.leafCanvas,{Position=UDim2.fromOffset(8,y+16),Size=UDim2.fromOffset(14,1),BackgroundColor3=palette.edge,BackgroundTransparency=.35,BorderSizePixel=0})
         local assigned = bindings[entry.key]
         local label = (entry.key:match("Hue$") and (entry.key == "menuHue" and "Menu Color" or entry.key == "espHue" and "ESP Color" or "FOV Color") or definition[3])
         if query ~= "" then label = (displayNames[entry.page] or entry.page) .. " / " .. label end
@@ -3234,8 +3246,8 @@ renderGraph = function()
                 end)
                 local reset = button(panel, "Вернуть исходный", UDim2.fromOffset(8, 342), UDim2.fromOffset(200, 34))
                 reset.Activated:Connect(function() choose(initial) end)
-            elseif entry.key == "gfxTier" or entry.key == "gfxLook" or entry.key == "espStyle" then
-                local names = entry.key == "espStyle" and { "Classic", "Glass", "Minimal" } or entry.key == "gfxTier" and { "Low", "Balanced", "Ultra" } or { "Arctic", "Golden", "Neon", "Cinema", "Clean" }
+            elseif entry.key == "gfxTier" or entry.key == "gfxLook" or entry.key == "espStyle" or entry.key == "chamsStyle" or entry.key == "skeletonStyle" then
+                local names = entry.key == "chamsStyle" and { "Soft", "Pearl", "Classic" } or entry.key == "skeletonStyle" and { "Silk", "Jointed", "Classic" } or entry.key == "espStyle" and { "Classic", "Glass", "Minimal" } or entry.key == "gfxTier" and { "Low", "Balanced", "Ultra" } or { "Arctic", "Golden", "Neon", "Cinema", "Clean" }
                 local panel = create("Frame", detailBody, { Size = UDim2.new(1, -20, 0, 95), BackgroundTransparency = 1, LayoutOrder = 1 })
                 table.insert(temporaryRows, panel)
                 local buttons = {}
@@ -3262,20 +3274,24 @@ renderGraph = function()
             })
             table.insert(temporaryRows, explanation)
         end)
+        control:SetAttribute("SettingKey",entry.key)
         graphBindingLabels[control] = { label = label, key = entry.key }
         middleBind(control, entry.key, gconnect)
         gconnect(control.MouseEnter, function() tooltip.Text = definition[4] .. "\nСКМ — назначить клавишу"; tooltip.Visible = menu.Visible end)
         gconnect(control.MouseLeave, function() tooltip.Visible = false end)
     end
     if selectedCategory == "Настройки" and selectedGroup == "Клиент" then
-        node("Client / Quick Start", 588, 14 + #leaves * 40, 258, false, function()
+        node("Client / Quick Start", 588, leafStart + #leaves * 40, 258, false, function()
             openDetail("Client")
             moveDetail(actionsRow, 1)
             moveDetail(controlRows.release.form,2)
         end)
     end
-    graph.CanvasSize = UDim2.fromOffset(870, math.max(465, #leaves * 40 + 100, #groups * 88 + 40))
-    controlRows.graphCanvas.Size=graph.CanvasSize
+    graph.CanvasSize=UDim2.fromOffset(870,465)
+    controlRows.graphCanvas.Size=UDim2.fromOffset(870,465)
+    leafScroll.CanvasSize=UDim2.fromOffset(280,math.max(438,leafStart+#leaves*40+80))
+    controlRows.leafCanvas.Size=leafScroll.CanvasSize
+    if #leaves>0 then create("Frame",controlRows.leafCanvas,{Name="FunctionRail",Position=UDim2.fromOffset(8,leafStart+16),Size=UDim2.fromOffset(1,math.max(1,(#leaves-1)*40)),BackgroundColor3=palette.edge,BackgroundTransparency=.35,BorderSizePixel=0}) end
 end
 connect(back.Activated, function()
     clearDetail()
@@ -3779,23 +3795,114 @@ controlRows.inspectorMotion=initializeInspectorMotion()
 end
 
 do
+local function initializeCombatAmmo()
+    local api={elapsed=2}
+    local cached,search
+    local function visible(object)
+        if not object or not object:IsDescendantOf(playerGui) or object:IsDescendantOf(gui) then return false end
+        local current=object
+        while current and current~=playerGui do
+            if current:IsA("GuiObject") and not current.Visible then return false end
+            if current:IsA("ScreenGui") and current.Enabled==false then return false end
+            current=current.Parent
+        end
+        return true
+    end
+    local function plain(value) return type(value)=="string" and value:gsub("<.->",""):match("^%s*(.-)%s*$") or "" end
+    local function normalized(value) return plain(value):lower():gsub("[%s%-_]","") end
+    api.parse=function(value)
+        local a,b=plain(value):match("^(%d+)%s*/%s*(%d+)$")
+        a,b=tonumber(a),tonumber(b)
+        if not a or not b or a<0 or b<=0 or b>9999 or a>b then return nil end
+        return a,b
+    end
+    local function matches(label,names)
+        if not visible(label) then return false end
+        local value=normalized(label.Text)
+        for _,name in ipairs(names) do if name~="" and value==normalized(name) then return true end end
+        return false
+    end
+    api.read=function(names)
+        if cached and matches(cached.label,names) and visible(cached.counter) then
+            local a,b=api.parse(cached.counter.Text)
+            if a then return a,b end
+        end
+        cached=nil
+        local camera=workspace.CurrentCamera
+        if not camera then return nil end
+        local signature=table.concat(names,"|")
+        if search and search.signature~=signature then search=nil end
+        if not search then
+            if api.lastSignature==signature and os.clock()<(api.nextScan or 0) then return nil end
+            search={queue={playerGui},cursor=1,signature=signature}; api.lastSignature=signature
+        end
+        local queue,cursor,work=search.queue,search.cursor,0
+        while cursor<=#queue and cursor<=2500 and work<120 do
+            local object=queue[cursor]; cursor+=1
+            work+=1
+            if object~=gui and not object:IsDescendantOf(gui) then
+                if (object:IsA("TextLabel") or object:IsA("TextButton")) and matches(object,names) then
+                    local p=object.AbsolutePosition
+                    if p.X>=camera.ViewportSize.X*.55 and p.Y>=camera.ViewportSize.Y*.5 then
+                        local parent=object.Parent
+                        for _=1,2 do
+                            if not parent or parent==playerGui then break end
+                            local scan,at={parent},1
+                            while at<=#scan and at<=100 do
+                                local child=scan[at]; at+=1
+                                if visible(child) and (child:IsA("TextLabel") or child:IsA("TextButton")) then
+                                    local a,b=api.parse(child.Text)
+                                    if a then cached={label=object,counter=child}; search=nil; return a,b end
+                                end
+                                for _,sub in ipairs(child:GetChildren()) do if #scan<100 then table.insert(scan,sub) end end
+                            end
+                            parent=parent.Parent
+                        end
+                    end
+                end
+                for _,child in ipairs(object:GetChildren()) do if #queue<2500 then table.insert(queue,child) end end
+            end
+        end
+        search.cursor=cursor
+        if cursor>#queue or cursor>2500 then search=nil; api.nextScan=os.clock()+1 end
+        return nil
+    end
+    api.clear=function() cached=nil; search=nil; api.nextScan=nil; api.lastSignature=nil end
+    return api
+end
+controlRows.combatAmmo=initializeCombatAmmo()
+end
+
+do
 local function initializeCombatUI()
     settings.fightFocus=false; settings._fightFocus=false
     local api={elapsed=1,teamElapsed=1,states={},notices={},clock=0}
     local focus=false
     local priorExpanded
-    local hud=create("CanvasGroup",gui,{Name="CombatHUD",AnchorPoint=Vector2.new(.5,1),Position=UDim2.new(.5,0,1,-160),Size=UDim2.fromOffset(390,102),BackgroundColor3=palette.background,BackgroundTransparency=.08,BorderSizePixel=0,Visible=false,ZIndex=12})
-    rounded(hud,18); local rim=stroke(hud,palette.accent); rim.Transparency=.68
+    local hud=create("CanvasGroup",gui,{Name="CombatHUD",AnchorPoint=Vector2.new(.5,1),Position=UDim2.new(.5,0,1,-160),Size=UDim2.fromOffset(414,116),BackgroundColor3=palette.background,BackgroundTransparency=.04,BorderSizePixel=0,Visible=false,ZIndex=12})
+    rounded(hud,20); local rim=stroke(hud,palette.accent); rim.Transparency=.7
+    create("UIGradient",hud,{Rotation=115,Color=ColorSequence.new(Color3.fromRGB(245,250,255),Color3.fromRGB(135,150,165))})
+    local sheen=create("Frame",hud,{Name="TopHighlight",Position=UDim2.fromOffset(22,1),Size=UDim2.new(1,-44,0,1),BorderSizePixel=0,BackgroundColor3=Color3.fromRGB(220,238,248),BackgroundTransparency=.8})
+    local visual={lastHp=nil,damage=0,visibility=0}
+    local divider=create("Frame",hud,{Position=UDim2.fromOffset(119,41),Size=UDim2.fromOffset(1,39),BorderSizePixel=0,BackgroundColor3=palette.edge,BackgroundTransparency=.65})
+    local separator=create("Frame",hud,{Position=UDim2.fromOffset(315,41),Size=UDim2.fromOffset(1,39),BorderSizePixel=0,BackgroundColor3=palette.edge,BackgroundTransparency=.65})
     local fit=create("UIScale",hud,{Scale=1})
-    local title=text(hud,"COMBAT",{Position=UDim2.fromOffset(16,10),Size=UDim2.fromOffset(90,16),TextSize=9,TextColor3=palette.accent,TextXAlignment=Enum.TextXAlignment.Left})
-    local health=text(hud,"— HP",{Position=UDim2.fromOffset(16,29),Size=UDim2.fromOffset(110,27),TextSize=21,Font=Enum.Font.GothamBold,TextXAlignment=Enum.TextXAlignment.Left})
-    local weapon=text(hud,"—",{Position=UDim2.fromOffset(143,30),Size=UDim2.fromOffset(231,23),TextSize=14,TextTruncate=Enum.TextTruncate.AtEnd,TextXAlignment=Enum.TextXAlignment.Left})
-    local ammo=text(hud,"Патроны —",{Position=UDim2.fromOffset(143,55),Size=UDim2.fromOffset(231,18),TextSize=11,TextXAlignment=Enum.TextXAlignment.Left})
-    local track=create("Frame",hud,{Position=UDim2.fromOffset(16,67),Size=UDim2.fromOffset(110,4),BackgroundColor3=palette.control,BorderSizePixel=0}); rounded(track,3)
+    local title=text(hud,"COMBAT",{Position=UDim2.fromOffset(20,12),Size=UDim2.fromOffset(100,16),TextSize=9,TextColor3=palette.accent,TextXAlignment=Enum.TextXAlignment.Left})
+    local health=text(hud,"— HP",{Position=UDim2.fromOffset(20,39),Size=UDim2.fromOffset(95,36),TextSize=28,Font=Enum.Font.GothamBold,TextXAlignment=Enum.TextXAlignment.Left})
+    text(hud,"HEALTH",{Position=UDim2.fromOffset(21,76),Size=UDim2.fromOffset(90,12),TextSize=8,TextColor3=palette.muted,TextXAlignment=Enum.TextXAlignment.Left})
+    local weapon=text(hud,"—",{Position=UDim2.fromOffset(137,39),Size=UDim2.fromOffset(165,25),TextSize=17,TextTruncate=Enum.TextTruncate.AtEnd,TextXAlignment=Enum.TextXAlignment.Left})
+    local ammo=text(hud,"Патроны —",{Position=UDim2.fromOffset(330,37),Size=UDim2.fromOffset(66,35),TextSize=28,Font=Enum.Font.GothamBold,TextXAlignment=Enum.TextXAlignment.Left})
+    local capacity=text(hud,"/ —",{Name="AmmoCapacity",Position=UDim2.fromOffset(331,72),Size=UDim2.fromOffset(65,14),TextSize=10,TextColor3=palette.muted,TextXAlignment=Enum.TextXAlignment.Left})
+    local mode=text(hud,"—",{Name="WeaponMode",Position=UDim2.fromOffset(138,68),Size=UDim2.fromOffset(165,16),TextSize=10,TextColor3=palette.muted,TextXAlignment=Enum.TextXAlignment.Left,TextTruncate=Enum.TextTruncate.AtEnd})
+    local track=create("Frame",hud,{Position=UDim2.fromOffset(20,96),Size=UDim2.fromOffset(374,4),BackgroundColor3=palette.control,BorderSizePixel=0}); rounded(track,3)
     local fill=create("Frame",track,{Size=UDim2.fromScale(1,1),BackgroundColor3=palette.accent,BorderSizePixel=0}); rounded(fill,3)
-    local warning=text(hud,"",{Position=UDim2.fromOffset(16,80),Size=UDim2.fromOffset(358,14),TextSize=9,TextColor3=Color3.fromRGB(245,135,135),TextXAlignment=Enum.TextXAlignment.Left})
-    local focusButton=button(hud,"Focus OFF",UDim2.fromOffset(278,7),UDim2.fromOffset(96,21))
-    focusButton.TextSize=9
+    local damageFill=create("Frame",track,{Name="HealthTrail",Size=UDim2.fromScale(1,1),BackgroundColor3=Color3.fromRGB(245,182,139),BorderSizePixel=0,ZIndex=1}); rounded(damageFill,3); fill.ZIndex=2
+    local warning=text(hud,"",{Position=UDim2.fromOffset(123,13),Size=UDim2.fromOffset(165,14),TextSize=8,TextColor3=Color3.fromRGB(245,135,135),TextXAlignment=Enum.TextXAlignment.Left})
+    local focusButton=button(hud,"Focus OFF",UDim2.fromOffset(300,9),UDim2.fromOffset(94,24))
+    focusButton.TextSize=9; focusButton.AutoButtonColor=false
+    focusButton.TextXAlignment=Enum.TextXAlignment.Left
+    create("UIPadding",focusButton,{PaddingLeft=UDim.new(0,12)})
+    local focusDot=create("Frame",focusButton,{Name="FocusDot",Position=UDim2.new(1,-17,.5,-3),Size=UDim2.fromOffset(6,6),BorderSizePixel=0,BackgroundColor3=palette.muted}); rounded(focusDot,5)
     connect(focusButton.Activated,function() setValue("fightFocus",not settings.fightFocus) end)
     local focusBadge=button(gui,"FOCUS · выключить",UDim2.new(.5,-80,0,120),UDim2.fromOffset(160,26)); focusBadge.Visible=false
     connect(focusBadge.Activated,function() setValue("fightFocus",false) end)
@@ -3815,7 +3922,8 @@ local function initializeCombatUI()
         end
     end
     local function referenced(object)
-        return object and object:IsA("ObjectValue") and object.Value or object
+        if object and object:IsA("ObjectValue") then return object.Value end
+        return object
     end
     api.read=function()
         local character=player.Character
@@ -3839,7 +3947,12 @@ local function initializeCombatUI()
         if current and (current<0 or current%1~=0) then current=nil end
         if capacity and (capacity<=0 or capacity%1~=0) then capacity=nil end
         if current and capacity and current>capacity then current,capacity=nil,nil end
-        return {hp=hp,maximum=maximum,weapon=type(label)=="string" and label or nil,mode=type(mode)=="string" and mode:sub(1,24) or nil,ammo=current,capacity=capacity}
+        local source=current~=nil and "replicated" or nil
+        if current==nil and model then
+            local a,b=controlRows.combatAmmo.read({type(label)=="string" and label or "",model.Name})
+            if a then current,capacity,source=a,b,"native-hud" end
+        end
+        return {hp=hp,maximum=maximum,weapon=type(label)=="string" and label or nil,mode=type(mode)=="string" and mode:sub(1,24) or nil,ammo=current,capacity=capacity,ammoSource=source}
     end
     local function drop(index)
         api.notices[index].card:Destroy(); table.remove(api.notices,index)
@@ -3849,12 +3962,16 @@ local function initializeCombatUI()
         local key=name..":"..kind
         for _,item in ipairs(api.notices) do if item.key==key then return false end end
         if #api.notices>=3 then drop(1) end
-        local card=create("CanvasGroup",noticeRoot,{Name="TeamNotice",Size=UDim2.fromOffset(290,62),BackgroundColor3=palette.background,BackgroundTransparency=.05,BorderSizePixel=0,GroupTransparency=1})
-        rounded(card,14); local edge=stroke(card,palette.accent); edge.Transparency=.65
-        local dot=create("Frame",card,{Position=UDim2.fromOffset(14,17),Size=UDim2.fromOffset(6,6),BorderSizePixel=0,BackgroundColor3=kind=="death" and Color3.fromRGB(240,130,130) or palette.accent}); rounded(dot,4)
-        text(card,"@"..name,{Position=UDim2.fromOffset(29,10),Size=UDim2.fromOffset(245,20),TextSize=12,TextTruncate=Enum.TextTruncate.AtEnd,TextXAlignment=Enum.TextXAlignment.Left})
-        text(card,message,{Position=UDim2.fromOffset(29,32),Size=UDim2.fromOffset(245,18),TextSize=10,TextColor3=palette.muted,TextXAlignment=Enum.TextXAlignment.Left})
-        table.insert(api.notices,{key=key,card=card,edge=edge,age=0})
+        local card=create("CanvasGroup",noticeRoot,{Name="TeamNotice",Size=UDim2.fromOffset(290,68),BackgroundColor3=palette.background,BackgroundTransparency=.05,BorderSizePixel=0,GroupTransparency=1})
+        rounded(card,16); local edge=stroke(card,palette.accent); edge.Transparency=.72
+        create("UIGradient",card,{Rotation=115,Color=ColorSequence.new(Color3.fromRGB(245,250,255),Color3.fromRGB(145,160,175))})
+        local badge=create("Frame",card,{Position=UDim2.fromOffset(12,15),Size=UDim2.fromOffset(36,36),BackgroundColor3=palette.control,BackgroundTransparency=.15,BorderSizePixel=0}); rounded(badge,12)
+        text(badge,kind=="death" and "!" or kind=="join" and "+" or kind=="leave" and "−" or "•",{Size=UDim2.fromScale(1,1),TextSize=19,TextColor3=kind=="death" and Color3.fromRGB(240,150,150) or palette.accent})
+        local progress=create("Frame",card,{Name="NoticeLifetime",Position=UDim2.new(0,60,1,-9),Size=UDim2.fromOffset(214,2),BackgroundColor3=palette.accent,BackgroundTransparency=.35,BorderSizePixel=0}); rounded(progress,3)
+        local dot=create("Frame",card,{Position=UDim2.fromOffset(275,17),Size=UDim2.fromOffset(6,6),BorderSizePixel=0,BackgroundColor3=kind=="death" and Color3.fromRGB(240,130,130) or palette.accent}); rounded(dot,4)
+        text(card,"@"..name,{Position=UDim2.fromOffset(60,11),Size=UDim2.fromOffset(205,20),TextSize=12,TextTruncate=Enum.TextTruncate.AtEnd,TextXAlignment=Enum.TextXAlignment.Left})
+        text(card,message,{Position=UDim2.fromOffset(60,33),Size=UDim2.fromOffset(214,18),TextSize=10,TextColor3=palette.muted,TextXAlignment=Enum.TextXAlignment.Left})
+        table.insert(api.notices,{key=key,card=card,edge=edge,progress=progress,age=0})
         return true
     end
     api.scanTeam=function()
@@ -3893,7 +4010,7 @@ local function initializeCombatUI()
             end
         end
     end
-    local targetRatio,ratio=0,0
+    local targetRatio,ratio,trail=0,0,0
     api.step=function(dt)
         api.clock+=dt
         local desired=settings.fightFocus==true
@@ -3914,7 +4031,7 @@ local function initializeCombatUI()
         local camera=workspace.CurrentCamera
         if camera then
             local factor=math.min(1,math.max(.25,(camera.ViewportSize.X-24)/420),math.max(.25,(camera.ViewportSize.Y-24)/600))
-            fit.Scale,noticeFit.Scale=factor,factor
+            fit.Scale,noticeFit.Scale=factor*(.97+.03*visual.visibility),factor
             noticeRoot.Position=UDim2.new(1,camera.ViewportSize.X<700 and -16 or -146,0,camera.ViewportSize.Y<600 and 110 or 205)
         end
         api.elapsed+=dt; api.teamElapsed+=dt
@@ -3922,17 +4039,29 @@ local function initializeCombatUI()
             api.elapsed=0
             local data=api.read(); api.data=data
             targetRatio=data.hp and data.maximum and data.maximum>0 and math.clamp(data.hp/data.maximum,0,1) or 0
-            health.Text=data.hp and (tostring(math.floor(math.max(0,data.hp))).." HP") or "— HP"
+            if data.hp and visual.lastHp and data.hp<visual.lastHp then visual.damage=.65 end
+            visual.lastHp=data.hp
+            health.Text=data.hp and tostring(math.floor(math.max(0,data.hp))) or "—"
             weapon.Text=data.weapon or "Нет оружия"
-            ammo.Text="Патроны "..(data.ammo and tostring(data.ammo)..(data.capacity and " / "..data.capacity or "") or "—").."  ·  "..(data.mode or "—")
+            ammo.Text=data.ammo~=nil and tostring(data.ammo) or "—"
+            capacity.Text="/ "..(data.capacity and tostring(data.capacity) or "—")
+            mode.Text=data.mode and string.upper(data.mode) or "РЕЖИМ НЕДОСТУПЕН"
             local lowHp=data.hp and data.maximum and data.maximum>0 and targetRatio<=.25
             warning.Text=data.hp and data.hp<=0 and "ПЕРСОНАЖ ПОГИБ" or lowHp and "НИЗКОЕ ЗДОРОВЬЕ" or data.ammo and data.ammo<=3 and "МАЛО ПАТРОНОВ" or ""
             local tint=lowHp and Color3.fromRGB(245,135,135) or palette.accent
             track.Visible=data.hp~=nil and data.maximum~=nil and data.maximum>0
             fill.BackgroundColor3,health.TextColor3,rim.Color,title.TextColor3=tint,tint,palette.accent,palette.accent
             hud.BackgroundColor3=palette.background
-            focusButton.Text=focus and "Focus ON" or "Focus OFF"; focusButton.TextColor3=focus and palette.accent or palette.muted
+            focusButton.Text="FOCUS"; focusButton.TextColor3=focus and palette.accent or palette.muted
+            focusDot.BackgroundColor3=focus and palette.accent or palette.muted
         end
+        visual.damage=math.max(0,visual.damage-dt)
+        local targetVisible=hud.Visible and 1 or 0
+        visual.visibility=settings.motion and not settings.lowFx and visual.visibility+(targetVisible-visual.visibility)*(1-math.exp(-18*dt)) or targetVisible
+        hud.GroupTransparency=1-visual.visibility
+        rim.Transparency=.72-visual.damage*.35
+        trail=targetRatio>trail and targetRatio or settings.motion and trail+(targetRatio-trail)*(1-math.exp(-3*dt)) or targetRatio
+        damageFill.Size=UDim2.fromScale(trail,1)
         ratio=settings.motion and ratio+(targetRatio-ratio)*(1-math.exp(-15*dt)) or targetRatio
         fill.Size=UDim2.fromScale(ratio,1)
         if settings.teamToasts and api.teamElapsed>=.5 then api.teamElapsed=0; api.scanTeam()
@@ -3944,11 +4073,12 @@ local function initializeCombatUI()
                 local alpha=math.clamp(item.age/.24,0,1)*math.clamp((4.5-item.age)/.3,0,1)
                 if not settings.motion or settings.lowFx then alpha=1 end
                 item.card.GroupTransparency=1-alpha
-                local targetY=(index-1)*70
+                local targetY=(index-1)*76
                 item.y=item.y or targetY
                 item.y=settings.motion and item.y+(targetY-item.y)*(1-math.exp(-18*dt)) or targetY
                 item.card.Position=UDim2.fromOffset((1-alpha)*20,item.y)
                 item.card.BackgroundColor3=palette.background; item.edge.Color=palette.accent
+                item.progress.Size=UDim2.fromOffset(214*math.clamp(1-item.age/4.5,0,1),2); item.progress.BackgroundColor3=palette.accent
             end
         end
     end
@@ -3961,6 +4091,60 @@ local function initializeCombatUI()
     return api
 end
 controlRows.combat=initializeCombatUI()
+end
+
+do
+local function initializeEspArt()
+    local api={}
+    api.segment=function(segment,color,skeleton)
+        local style=skeleton and settings.skeletonStyle or 3
+        if not skeleton and not segment:FindFirstChild("ArtCorner") then return end
+        if not segment:FindFirstChild("ArtCorner") then
+            create("UICorner",segment,{Name="ArtCorner",CornerRadius=UDim.new(0,0)})
+            local edge=stroke(segment,Color3.fromRGB(6,12,18),.8); edge.Name="ArtEdge"; edge.Enabled=false
+        end
+        local corner=segment:FindFirstChild("ArtCorner")
+        local edge=segment:FindFirstChild("ArtEdge")
+        corner.CornerRadius=UDim.new(0,style==3 and 0 or 8)
+        edge.Enabled=style~=3 and settings.espOpacity>0
+        edge.Transparency=.48; edge.Thickness=style==2 and 1 or .75
+        if style~=3 then
+            segment.BackgroundColor3=color:Lerp(Color3.fromRGB(235,245,250),style==2 and .7 or .38)
+            segment.BackgroundTransparency=1-(settings.espOpacity/100)*.84
+        end
+    end
+    api.node=function(screen,point,color)
+        screen.nodeUsed=(screen.nodeUsed or 0)+1
+        local index=screen.nodeUsed
+        local node=screen.nodes[index]
+        if not node then
+            node=create("Frame",screen.container,{Name="SkeletonJoint",AnchorPoint=Vector2.new(.5,.5),Size=UDim2.fromOffset(3.5,3.5),BorderSizePixel=0,ZIndex=2})
+            rounded(node,8); stroke(node,Color3.fromRGB(6,12,18),.75).Transparency=.35
+            screen.nodes[index]=node
+        end
+        node.Visible=settings.espOpacity>0
+        node.Position=UDim2.fromOffset(point.X,point.Y)
+        node.BackgroundColor3=color:Lerp(Color3.fromRGB(240,248,251),.72)
+        node.BackgroundTransparency=1-settings.espOpacity/100
+    end
+    api.highlight=function(marker,color)
+        local style=settings.chamsStyle
+        local fillColor=style==3 and color or color:Lerp(Color3.fromRGB(190,216,231),.24)
+        local outline=style==3 and color or color:Lerp(Color3.fromRGB(234,246,252),style==2 and .65 or .38)
+        local fill=style==2 and 1 or style==3 and (1-settings.fillOpacity/100) or 1-(settings.fillOpacity/100)*.32
+        local edge=1-(settings.espOpacity/100)*(style==1 and .72 or 1)
+        local signature=table.concat({style,settings.fillOpacity,settings.espOpacity,tostring(color)},"/")
+        if marker.artSignature==signature then return end
+        marker.artSignature=signature
+        if marker.artTween then marker.artTween:Cancel(); marker.artTween=nil end
+        local properties={FillColor=fillColor,OutlineColor=outline,FillTransparency=fill,OutlineTransparency=edge}
+        if settings.motion and not settings.lowFx and not settings._fightFocus then
+            marker.artTween=TweenService:Create(marker.highlight,TweenInfo.new(.2,Enum.EasingStyle.Quart,Enum.EasingDirection.Out),properties); marker.artTween:Play()
+        else for key,value in pairs(properties) do marker.highlight[key]=value end end
+    end
+    return api
+end
+controlRows.espArt=initializeEspArt()
 end
 
 local overrides = {}
@@ -4402,12 +4586,12 @@ local function newScreenMarker()
         BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), Visible = false,
     })
     return {
-        container = container, lines = {}, used = 0, joints = {}, jointsAt = -1,
+        container = container, lines = {}, used = 0, joints = {}, jointsAt = -1, nodes = {}, nodeUsed = 0,
         nameLabel = screenLabel(container), healthLabel = screenLabel(container),
         weaponLabel = screenLabel(container), distanceLabel = screenLabel(container),
     }
 end
-local function line(screen, a, b, color, thickness)
+local function line(screen, a, b, color, thickness, skeleton)
     local difference = b - a
     local length = difference.Magnitude
     if length < 0.1 then return end
@@ -4425,6 +4609,7 @@ local function line(screen, a, b, color, thickness)
     segment.Rotation = math.deg(math.atan2(difference.Y, difference.X))
     segment.BackgroundColor3 = color
     segment.BackgroundTransparency = settings.espStyle == 1 and (1 - settings.espOpacity / 100) or math.max(.48, 1 - settings.espOpacity / 100)
+    controlRows.espArt.segment(segment,color,skeleton)
     segment.Visible = true
 end
 local function project(camera, position)
@@ -4434,7 +4619,8 @@ local function project(camera, position)
 end
 local function renderScreenMarker(marker, camera, color)
     local screen = marker.screen
-    screen.used = 0
+    screen.used = 0; screen.nodeUsed=0
+    for _,node in ipairs(screen.nodes) do node.Visible=false end
     local candidate = marker.candidate
     local enabled = settings.esp and not settings._mapOpen and not menu.Visible and camera and candidate and candidate.model:IsDescendantOf(workspace)
         and candidate.root:IsDescendantOf(workspace) and candidate.humanoid.Health > 0
@@ -4506,12 +4692,19 @@ local function renderScreenMarker(marker, camera, color)
                 if child:IsA("BasePart") then for _, joint in ipairs(child:GetChildren()) do considerJoint(joint) end end
             end
         end
+        local points={}
+        local function bodyPoint(part)
+            if points[part]==nil then points[part]=project(camera,part.Position) or false end
+            return points[part]
+        end
         for _, joint in ipairs(screen.joints) do
-            if joint.Parent and joint.Part0 and joint.Part1 then
-                local a = project(camera, joint.Part0.Position)
-                local b = project(camera, joint.Part1.Position)
-                if a and b then line(screen, a, b, color) end
+            if joint.Parent and joint.Part0 and joint.Part1 and joint.Part0.Name~="HumanoidRootPart" and joint.Part1.Name~="HumanoidRootPart" then
+                local a,b=bodyPoint(joint.Part0),bodyPoint(joint.Part1)
+                if a and b then line(screen,a,b,color,nil,true) end
             end
+        end
+        if settings.skeletonStyle==2 and not settings.lowFx and not settings._fightFocus then
+            for _,point in pairs(points) do if point then controlRows.espArt.node(screen,point,color) end end
         end
     end
     for index = screen.used + 1, #screen.lines do screen.lines[index].Visible = false end
@@ -4520,6 +4713,7 @@ end
 local markersByModel = {}
 local orderedMarkers = {}
 local function destroyMarker(marker)
+    if marker.artTween then marker.artTween:Cancel() end
     if marker.screen.healthTween then marker.screen.healthTween:Cancel() end
     marker.screen.container:Destroy()
     marker.highlight:Destroy()
@@ -4556,10 +4750,7 @@ local function updateMarkers(camera)
                     marker.occluded = hit and not hit.Instance:IsDescendantOf(model) or false
                     local color = baseColor
                     if isFriend(owner) then color = Color3.fromRGB(85, 235, 150) end
-                    marker.highlight.FillColor = color
-                    marker.highlight.OutlineColor = color
-                    marker.highlight.FillTransparency = settings.espStyle == 1 and (1 - settings.fillOpacity / 100) or math.max(.94, 1 - settings.fillOpacity / 100)
-                    marker.highlight.OutlineTransparency = settings.espStyle == 1 and (1 - settings.espOpacity / 100) or math.max(.38, 1 - settings.espOpacity / 100)
+                    controlRows.espArt.highlight(marker,color)
                     marker.highlight.Enabled = not settings._mapOpen and not menu.Visible and settings.chams
                     marker.highlight.DepthMode = settings.through
                         and Enum.HighlightDepthMode.AlwaysOnTop or Enum.HighlightDepthMode.Occluded
