@@ -23,8 +23,8 @@ end
 
 -- Every exposed setting has its own description, bounds and keyboard actions.
 local definitions = {
-    { "chamsStyle", 1, "Chams Style", "1 — Soft: лёгкая заливка и мягкий контур; 2 — Pearl: только светлый контур; 3 — Classic. Цвет и прозрачность задаются отдельно.", "ESP", 1, 3 },
-    { "skeletonStyle", 1, "Skeleton Style", "1 — Silk: округлые линии с тёмной подложкой; 2 — Jointed: добавить точки суставов; 3 — Classic. Light Menu скрывает точки суставов.", "ESP", 1, 3 },
+    { "chamsStyle", 1, "Chams Style", "1 — Radiant: светлый цельный силуэт с перламутровым контуром; 2 — Outline: только контур; 3 — Classic. Fill Opacity регулирует интенсивность Radiant, 0 убирает заливку.", "ESP", 1, 3 },
+    { "skeletonStyle", 1, "Skeleton Style", "1 — Silk: тонкие светлые линии без точек; 2 — Jointed: суставы только вблизи; 3 — Classic. Вдали детализация уменьшается, чтобы скелет не превращался в чёрные точки.", "ESP", 1, 3 },
     { "combatHud", true, "Combat HUD", "Компактно показывает твоё здоровье, оружие, патроны и режим огня. Неизвестные данные отмечены прочерком.", "Настройки" },
     { "fightFocus", false, "Fight Focus", "На время боя скрывает декоративные эффекты, сворачивает Island и приглушает встроенный Roblox-плеер. Настройки оформления сохраняются. СКМ — назначить бинд.", "Настройки" },
     { "teamToasts", true, "Team Notices", "Короткие уведомления о тиммейтах: вход/выход, появление рядом и подтверждённая смерть. Без постоянных карточек и спама.", "Настройки" },
@@ -3247,7 +3247,7 @@ renderGraph = function()
                 local reset = button(panel, "Вернуть исходный", UDim2.fromOffset(8, 342), UDim2.fromOffset(200, 34))
                 reset.Activated:Connect(function() choose(initial) end)
             elseif entry.key == "gfxTier" or entry.key == "gfxLook" or entry.key == "espStyle" or entry.key == "chamsStyle" or entry.key == "skeletonStyle" then
-                local names = entry.key == "chamsStyle" and { "Soft", "Pearl", "Classic" } or entry.key == "skeletonStyle" and { "Silk", "Jointed", "Classic" } or entry.key == "espStyle" and { "Classic", "Glass", "Minimal" } or entry.key == "gfxTier" and { "Low", "Balanced", "Ultra" } or { "Arctic", "Golden", "Neon", "Cinema", "Clean" }
+                local names = entry.key == "chamsStyle" and { "Radiant", "Outline", "Classic" } or entry.key == "skeletonStyle" and { "Silk", "Jointed", "Classic" } or entry.key == "espStyle" and { "Classic", "Glass", "Minimal" } or entry.key == "gfxTier" and { "Low", "Balanced", "Ultra" } or { "Arctic", "Golden", "Neon", "Cinema", "Clean" }
                 local panel = create("Frame", detailBody, { Size = UDim2.new(1, -20, 0, 95), BackgroundTransparency = 1, LayoutOrder = 1 })
                 table.insert(temporaryRows, panel)
                 local buttons = {}
@@ -4096,7 +4096,7 @@ end
 do
 local function initializeEspArt()
     local api={}
-    api.segment=function(segment,color,skeleton)
+    api.segment=function(segment,color,skeleton,bodyHeight)
         local style=skeleton and settings.skeletonStyle or 3
         if not skeleton and not segment:FindFirstChild("ArtCorner") then return end
         if not segment:FindFirstChild("ArtCorner") then
@@ -4106,11 +4106,12 @@ local function initializeEspArt()
         local corner=segment:FindFirstChild("ArtCorner")
         local edge=segment:FindFirstChild("ArtEdge")
         corner.CornerRadius=UDim.new(0,style==3 and 0 or 8)
-        edge.Enabled=style~=3 and settings.espOpacity>0
-        edge.Transparency=.3; edge.Thickness=style==2 and 1.2 or 1
+        local distant=bodyHeight and bodyHeight<80
+        edge.Enabled=style~=3 and not distant and settings.espOpacity>0
+        edge.Transparency=.7; edge.Thickness=style==2 and .75 or .5
         if style~=3 then
             segment.BackgroundColor3=color:Lerp(Color3.fromRGB(235,245,250),style==2 and .85 or .7)
-            segment.BackgroundTransparency=1-(settings.espOpacity/100)*.92
+            segment.BackgroundTransparency=1-(settings.espOpacity/100)*(distant and .65 or .9)
         end
     end
     api.node=function(screen,point,color,head)
@@ -4134,11 +4135,17 @@ local function initializeEspArt()
     end
     api.highlight=function(marker,color)
         local style=settings.chamsStyle
-        local fillColor=style==3 and color or color:Lerp(Color3.fromRGB(190,216,231),.24)
-        local outline=style==3 and color or color:Lerp(Color3.fromRGB(234,246,252),style==2 and .65 or .38)
-        local fill=style==2 and 1 or style==3 and (1-settings.fillOpacity/100) or 1-(settings.fillOpacity/100)*.32
-        local edge=1-(settings.espOpacity/100)*(style==1 and .72 or 1)
-        local signature=table.concat({style,settings.fillOpacity,settings.espOpacity,tostring(color)},"/")
+        local height=marker.screen and marker.screen.bodyHeight
+        if height then
+            if height<30 then marker.smallChams=true elseif height>42 then marker.smallChams=false end
+        end
+        local fillColor=style==3 and color or color:Lerp(Color3.fromRGB(225,240,249),.42)
+        local outline=style==3 and color or color:Lerp(Color3.fromRGB(245,251,255),.8)
+        local strength=settings.fillOpacity/100
+        local density=strength>0 and math.min(.92,math.sqrt(strength)+(marker.smallChams and .16 or 0)) or 0
+        local fill=style==2 and 1 or style==3 and (1-strength) or 1-density
+        local edge=1-(settings.espOpacity/100)*(style==1 and .78 or 1)
+        local signature=table.concat({style,settings.fillOpacity,settings.espOpacity,tostring(color),tostring(marker.smallChams==true)},"/")
         if marker.artSignature==signature then return end
         marker.artSignature=signature
         if marker.artTween then marker.artTween:Cancel(); marker.artTween=nil end
@@ -4698,7 +4705,7 @@ local function line(screen, a, b, color, thickness, skeleton)
     segment.Rotation = math.deg(math.atan2(difference.Y, difference.X))
     segment.BackgroundColor3 = color
     segment.BackgroundTransparency = settings.espStyle == 1 and (1 - settings.espOpacity / 100) or math.max(.48, 1 - settings.espOpacity / 100)
-    controlRows.espArt.segment(segment,color,skeleton)
+    controlRows.espArt.segment(segment,color,skeleton,screen.bodyHeight)
     segment.Visible = true
 end
 local function project(camera, position)
@@ -4731,6 +4738,7 @@ local function renderScreenMarker(marker, camera, color)
     local low, high = bodyBounds(camera, candidate)
     screen.container.Visible = low ~= nil
     if not low then return end
+    screen.bodyHeight=math.max(0,high.Y-low.Y)
     renderLabels(screen, candidate, low, high, camera, color)
     if settings.boxes or settings.corners or settings.healthBar then
         if low then
@@ -4791,10 +4799,10 @@ local function renderScreenMarker(marker, camera, color)
                 local a,b=bodyPoint(joint.Part0),bodyPoint(joint.Part1)
                 local distant=high.Y-low.Y<42
                 local detail=joint.Part0.Name:find("Hand",1,true) or joint.Part1.Name:find("Hand",1,true) or joint.Part0.Name:find("Foot",1,true) or joint.Part1.Name:find("Foot",1,true)
-                if a and b and (not distant or not detail) then line(screen,a,b,color,settings.skeletonStyle==3 and settings.lineWidth or math.clamp(settings.lineWidth,1.25,2.5),true) end
+                if a and b and high.Y-low.Y>=18 and (not distant or not detail) then line(screen,a,b,color,settings.skeletonStyle==3 and settings.lineWidth or distant and .85 or math.clamp(settings.lineWidth,1,1.75),true) end
             end
         end
-        if settings.skeletonStyle~=3 and high.Y-low.Y>=60 and not settings.lowFx and not settings._fightFocus then
+        if settings.skeletonStyle==2 and high.Y-low.Y>=80 and not settings.lowFx and not settings._fightFocus then
             for part,point in pairs(points) do if point then controlRows.espArt.node(screen,point,color,part.Name=="Head") end end
         end
     end
