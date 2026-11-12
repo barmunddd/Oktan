@@ -3488,6 +3488,27 @@ local function initializeProfiles()
         local copy={format="OktanProfile",version=1,name=profile.name,settings=profile.settings,bindings=profile.bindings}
         return HttpService:JSONEncode(copy)
     end
+    api.update=function(id)
+        local profile=find(id); if not profile then return false,"Сначала выбери конфиг слева." end
+        return api.save(profile.name,true)
+    end
+    api.rename=function(id,name)
+        local profile=find(id); if not profile then return false,"Сначала выбери конфиг слева." end
+        name=nameOf(name); if not name then return false,"Название: 1–48 символов, без переноса строк." end
+        local existing=unique(name)
+        if existing and existing.id~=id then return false,"Такое имя уже есть. Выбери другое название." end
+        profile.name=name; persist(); return true,api.status
+    end
+    api.duplicate=function(id)
+        local original=find(id); if not original then return false,"Сначала выбери конфиг слева." end
+        local profile=validate(original)
+        local base=utf8.len(original.name)<=32 and #original.name<=64 and original.name or "Конфиг"
+        for index=1,31 do
+            local name=base.." — копия"..(index==1 and "" or " "..index)
+            if not unique(name) then profile.name=name; return add(profile) end
+        end
+        return false,"Лимит копий этого конфига."
+    end
     api.import=function(raw)
         if type(raw)~="string" or #raw==0 or #raw>65536 then return false,"Вставь JSON-конфиг размером до 64 КБ." end
         local ok,data=pcall(function() return HttpService:JSONDecode(raw) end)
@@ -3526,69 +3547,109 @@ do
 local function initializeProfilesUI()
     local api=controlRows.profiles
     local selected,withBinds,confirm,notice=nil,false,nil,""
+    local sharing=false
+    local renaming=false
+    local openTween
     local shield=create("TextButton",gui,{Name="ConfigShield",Text="",Size=UDim2.fromScale(1,1),BackgroundColor3=Color3.fromRGB(0,0,0),BackgroundTransparency=.45,AutoButtonColor=false,Visible=false,Active=true,Modal=true,ZIndex=33})
     local window=create("CanvasGroup",gui,{Name="ConfigLibrary",AnchorPoint=Vector2.new(.5,.5),Position=UDim2.fromScale(.5,.5),Size=UDim2.fromOffset(840,550),BackgroundColor3=palette.background,BackgroundTransparency=.02,BorderSizePixel=0,Visible=false,ZIndex=34})
     rounded(window,22); local rim=stroke(window,palette.accent); rim.Transparency=.5
     local fit=create("UIScale",window,{Scale=1})
-    text(window,"CONFIG LIBRARY",{Position=UDim2.fromOffset(22,15),Size=UDim2.fromOffset(550,27),TextSize=17,Font=Enum.Font.GothamBold,TextXAlignment=Enum.TextXAlignment.Left})
-    text(window,"Твои настройки · готовые конфиги · обмен с другом",{Position=UDim2.fromOffset(22,43),Size=UDim2.fromOffset(690,18),TextSize=11,TextColor3=palette.muted,TextXAlignment=Enum.TextXAlignment.Left})
-    local close=button(window,"Close",UDim2.new(1,-102,0,20),UDim2.fromOffset(80,30))
+    text(window,"Мои конфиги",{Position=UDim2.fromOffset(22,15),Size=UDim2.fromOffset(550,27),TextSize=17,Font=Enum.Font.GothamBold,TextXAlignment=Enum.TextXAlignment.Left})
+    text(window,"Выбери конфиг слева, чтобы применить или обновить его.",{Position=UDim2.fromOffset(22,43),Size=UDim2.fromOffset(690,18),TextSize=11,TextColor3=palette.muted,TextXAlignment=Enum.TextXAlignment.Left})
+    local close=button(window,"Закрыть",UDim2.new(1,-102,0,20),UDim2.fromOffset(80,30))
     local input=text(window,"",{Name="ProfileName",Position=UDim2.fromOffset(22,78),Size=UDim2.fromOffset(540,36),BackgroundColor3=palette.control,BackgroundTransparency=.2,PlaceholderText="Название конфига…",ClearTextOnFocus=false,TextXAlignment=Enum.TextXAlignment.Left},"TextBox")
     rounded(input,10); create("UIPadding",input,{PaddingLeft=UDim.new(0,12)})
-    local save=button(window,"Save Current",UDim2.fromOffset(574,78),UDim2.fromOffset(244,36))
+    local new=button(window,"Создать",UDim2.fromOffset(574,78),UDim2.fromOffset(244,36))
     local list=create("ScrollingFrame",window,{Name="SavedProfiles",Position=UDim2.fromOffset(22,130),Size=UDim2.fromOffset(232,336),BackgroundTransparency=1,BorderSizePixel=0,ScrollBarThickness=3,AutomaticCanvasSize=Enum.AutomaticSize.Y,CanvasSize=UDim2.fromOffset(0,0)})
     local panel=create("Frame",window,{Position=UDim2.fromOffset(270,130),Size=UDim2.fromOffset(548,336),BackgroundColor3=palette.panel,BackgroundTransparency=.12,BorderSizePixel=0}); rounded(panel,14)
     local summary=text(panel,"Выбери сохранённый конфиг или импортируй готовый.",{Position=UDim2.fromOffset(14,10),Size=UDim2.fromOffset(520,38),TextSize=12,TextWrapped=true,TextXAlignment=Enum.TextXAlignment.Left})
-    local load=button(panel,"Load",UDim2.fromOffset(14,53),UDim2.fromOffset(120,30))
-    local copy=button(panel,"Copy JSON",UDim2.fromOffset(144,53),UDim2.fromOffset(120,30))
-    local export=button(panel,"Save File",UDim2.fromOffset(274,53),UDim2.fromOffset(120,30))
-    local remove=button(panel,"Delete",UDim2.fromOffset(404,53),UDim2.fromOffset(130,30))
-    local binds=button(panel,"Load binds: OFF",UDim2.fromOffset(14,94),UDim2.fromOffset(250,27))
-    local undo=button(panel,"Undo Load",UDim2.fromOffset(274,94),UDim2.fromOffset(260,27))
-    local raw=text(panel,"",{Name="ProfileJSON",Position=UDim2.fromOffset(14,134),Size=UDim2.fromOffset(520,145),BackgroundColor3=palette.background,BackgroundTransparency=.15,TextSize=11,TextWrapped=true,TextXAlignment=Enum.TextXAlignment.Left,TextYAlignment=Enum.TextYAlignment.Top,MultiLine=true,ClearTextOnFocus=false,PlaceholderText="Вставь JSON-конфиг друга или продавца, затем нажми Import. Импорт добавляет профиль, Load применяет его."},"TextBox")
+    local load=button(panel,"Применить",UDim2.fromOffset(14,62),UDim2.fromOffset(250,36))
+    local save=button(panel,"Сохранить текущий",UDim2.fromOffset(274,62),UDim2.fromOffset(260,36))
+    local duplicate=button(panel,"Дублировать",UDim2.fromOffset(14,110),UDim2.fromOffset(250,36))
+    local rename=button(panel,"Переименовать",UDim2.fromOffset(14,207),UDim2.fromOffset(250,32))
+    local share=button(panel,"Поделиться / Получить",UDim2.fromOffset(274,207),UDim2.fromOffset(260,32))
+    local exchange=create("Frame",window,{Name="ProfileExchange",Position=UDim2.fromOffset(270,130),Size=UDim2.fromOffset(548,336),BackgroundColor3=palette.panel,BorderSizePixel=0,Visible=false,ZIndex=2}); rounded(exchange,14)
+    text(exchange,"Обмен конфигами",{Position=UDim2.fromOffset(14,10),Size=UDim2.fromOffset(350,28),TextSize=15,TextXAlignment=Enum.TextXAlignment.Left})
+    local back=button(exchange,"Назад",UDim2.fromOffset(404,10),UDim2.fromOffset(130,28))
+    local copy=button(exchange,"Копировать код",UDim2.fromOffset(14,53),UDim2.fromOffset(250,30))
+    local export=button(exchange,"Сохранить файлом",UDim2.fromOffset(274,53),UDim2.fromOffset(260,30))
+    local remove=button(panel,"Удалить",UDim2.fromOffset(274,110),UDim2.fromOffset(260,36))
+    local binds=button(panel,"Чужие бинды: нет",UDim2.fromOffset(14,158),UDim2.fromOffset(250,32))
+    local undo=button(panel,"Отменить применение",UDim2.fromOffset(274,158),UDim2.fromOffset(260,32))
+    local raw=text(exchange,"",{Name="ProfileJSON",Position=UDim2.fromOffset(14,94),Size=UDim2.fromOffset(520,185),BackgroundColor3=palette.background,BackgroundTransparency=.15,TextSize=11,TextWrapped=true,TextXAlignment=Enum.TextXAlignment.Left,TextYAlignment=Enum.TextYAlignment.Top,MultiLine=true,ClearTextOnFocus=false,PlaceholderText="Вставь код конфига друга и нажми «Добавить». Затем выбери его в списке и нажми «Применить»."},"TextBox")
     rounded(raw,9); create("UIPadding",raw,{PaddingLeft=UDim.new(0,10),PaddingRight=UDim.new(0,10),PaddingTop=UDim.new(0,8)})
-    local import=button(panel,"Import JSON",UDim2.fromOffset(14,291),UDim2.fromOffset(250,30))
-    local importFile=button(panel,"Import File",UDim2.fromOffset(274,291),UDim2.fromOffset(260,30))
+    local import=button(exchange,"Добавить по коду",UDim2.fromOffset(14,291),UDim2.fromOffset(250,30))
+    local importFile=button(exchange,"Добавить из файла",UDim2.fromOffset(274,291),UDim2.fromOffset(260,30))
     local status=text(window,"",{Position=UDim2.fromOffset(22,477),Size=UDim2.fromOffset(796,48),TextSize=11,TextWrapped=true,TextColor3=palette.muted,TextXAlignment=Enum.TextXAlignment.Left})
-    local launcher=button(menu,"Configs",UDim2.new(1,-132,1,-34),UDim2.fromOffset(110,25))
+    local launcher=button(menu,"Конфиги",UDim2.new(1,-132,1,-34),UDim2.fromOffset(110,25))
     local function refresh()
         list:ClearAllChildren(); create("UIListLayout",list,{Padding=UDim.new(0,6),SortOrder=Enum.SortOrder.LayoutOrder})
         local items=table.clone(api.items); table.sort(items,function(a,b) return a.name:lower()<b.name:lower() end)
         for index,profile in ipairs(items) do
             local item=button(list,profile.name,UDim2.fromOffset(0,0),UDim2.new(1,-8,0,42)); item.LayoutOrder=index
             item.TextSize=12; item.TextColor3=selected==profile.id and palette.accent or palette.text
-            item.Activated:Connect(function() selected=profile.id; input.Text=profile.name; confirm=nil; notice=""; refresh() end)
+            item.Activated:Connect(function() selected=profile.id; renaming=false; confirm=nil; notice=""; refresh() end)
         end
-        if #items==0 then text(list,"Пока нет конфигов.\nСохрани текущие настройки под своим именем.",{Size=UDim2.new(1,-8,0,96),TextWrapped=true,TextSize=12,TextColor3=palette.muted}) end
+        if #items==0 then text(list,"Пока нет конфигов.\nВведи название сверху и нажми «Создать».",{Size=UDim2.new(1,-8,0,96),TextWrapped=true,TextSize=12,TextColor3=palette.muted}) end
         local profile=api.find(selected)
         if profile then
             local settingsCount,bindCount=0,0
             for _ in pairs(profile.settings) do settingsCount+=1 end
             for _ in pairs(profile.bindings) do bindCount+=1 end
             summary.Text=profile.name.."\n"..settingsCount.." настроек · "..bindCount.." биндов"
-        else summary.Text="Выбери сохранённый конфиг или импортируй готовый." end
-        save.Text=confirm and confirm.kind=="save" and "Confirm Save" or "Save Current"
-        remove.Text=confirm and confirm.kind=="delete" and "Confirm Delete" or "Delete"
-        binds.Text="Load binds: "..(withBinds and "ON" or "OFF")
-        status.Text=(notice~="" and notice or api.status).."\nЭкспорт: настройки и бинды. Ключ, подписка, друзья и музыкальные подключения не передаются."
+        else summary.Text="Введи название сверху и нажми «Создать».\nБудут сохранены текущие настройки." end
+        save.Text=confirm and confirm.kind=="save" and "Подтвердить сохранение" or "Сохранить текущий"
+        remove.Text=confirm and confirm.kind=="delete" and "Подтвердить удаление" or "Удалить"
+        binds.Text="Заменять мои бинды: "..(withBinds and "да" or "нет")
+        new.Text=renaming and "Сохранить название" or "Создать"
+        rename.Text=renaming and "Отменить переименование" or "Переименовать"
+        input.PlaceholderText=renaming and "Новое название…" or "Название нового конфига…"
+        exchange.Visible=sharing
+        status.Text=(notice~="" and notice or api.status)..(sharing and "\nКлюч доступа и личные подключения не передаются." or "")
     end
     local function result(ok,message)
         notice=message or (ok and "Готово" or "Ошибка"); refresh()
     end
     api.open=function()
-        selected=api.find(selected) and selected or nil; confirm=nil
+        selected=api.find(selected) and selected or nil; confirm=nil; sharing=false; renaming=false
         window.Visible=true; shield.Visible=true; refresh()
-        if settings.motion and not settings.lowFx then window.GroupTransparency=1; TweenService:Create(window,TweenInfo.new(.22),{GroupTransparency=0}):Play() else window.GroupTransparency=0 end
+        if openTween then openTween:Cancel() end
+        if settings.motion and not settings.lowFx then window.GroupTransparency=1; openTween=TweenService:Create(window,TweenInfo.new(.22),{GroupTransparency=0}); openTween:Play() else window.GroupTransparency=0 end
     end
-    api.close=function() window.Visible=false; shield.Visible=false; confirm=nil end
+    api.close=function() if openTween then openTween:Cancel(); openTween=nil end; window.Visible=false; shield.Visible=false; confirm=nil end
     connect(close.Activated,api.close); connect(launcher.Activated,api.open)
-    connect(save.Activated,function()
-        local overwrite=confirm and confirm.kind=="save" and confirm.name==input.Text and os.clock()<confirm.untilTime
-        local ok,message,id=api.save(input.Text,overwrite)
-        if ok then selected=message; confirm=nil; result(true,api.status)
-        elseif message=="CONFIRM" then confirm={kind="save",name=input.Text,untilTime=os.clock()+5}; result(false,"Имя уже занято. Повтори Save в течение 5 секунд для обновления.")
+    connect(new.Activated,function()
+        if renaming then
+            local ok,message=api.rename(selected,input.Text)
+            if ok then renaming=false; input.Text="" end
+            result(ok,message); return
+        end
+        local ok,message=api.save(input.Text,false)
+        if ok then selected=message; input.Text=""; confirm=nil; result(true,api.status)
+        elseif message=="CONFIRM" then result(false,"Такое имя уже есть. Введи другое название или выбери конфиг и сохрани текущие настройки.")
         else result(false,message) end
     end)
+    connect(save.Activated,function()
+        local profile=api.find(selected)
+        if not profile then result(false,"Сначала выбери конфиг слева или создай новый."); return end
+        if confirm and confirm.kind=="save" and confirm.id==selected and os.clock()<confirm.untilTime then
+            local ok,message=api.update(selected); confirm=nil; result(ok,ok and api.status or message)
+        else confirm={kind="save",id=selected,untilTime=os.clock()+5}; result(false,"Заменить настройки в «"..profile.name.."»? Нажми ещё раз для сохранения.") end
+    end)
+    connect(duplicate.Activated,function()
+        local ok,message=api.duplicate(selected)
+        if ok then selected=message; confirm=nil; renaming=false; result(true,"Копия создана. "..api.status) else result(false,message) end
+    end)
+    connect(rename.Activated,function()
+        local profile=api.find(selected)
+        if not profile then result(false,"Сначала выбери конфиг слева."); return end
+        renaming=not renaming; confirm=nil
+        input.Text=renaming and profile.name or ""
+        result(true,renaming and "Измени название сверху и нажми «Сохранить название»." or "Переименование отменено.")
+        if renaming then input:CaptureFocus() end
+    end)
+    connect(share.Activated,function() sharing=true; renaming=false; confirm=nil; refresh() end)
+    connect(back.Activated,function() sharing=false; refresh() end)
     connect(load.Activated,function() result(api.apply(selected,withBinds)) end)
     connect(undo.Activated,function() result(api.undo()) end)
     connect(binds.Activated,function() withBinds=not withBinds; refresh() end)
@@ -3597,7 +3658,7 @@ local function initializeProfilesUI()
         if not code then result(false,message); return end
         raw.Text=code
         local ok=type(setclipboard)=="function" and pcall(setclipboard,code)
-        result(true,ok and "JSON скопирован — отправь другу." or "JSON в поле справа: выдели и скопируй его.")
+        result(true,ok and "Код скопирован — отправь другу." or "Код в поле: выдели и скопируй его.")
     end)
     connect(export.Activated,function()
         local code,message=api.export(selected)
@@ -3608,7 +3669,7 @@ local function initializeProfilesUI()
     end)
     local function importCode(code)
         local ok,message=api.import(code)
-        if ok then selected=message; raw.Text=""; result(true,"Конфиг добавлен. Проверь выбор биндов и нажми Load.") else result(false,message) end
+        if ok then selected=message; raw.Text=""; result(true,"Конфиг добавлен. Нажми «Назад», затем «Применить».") else result(false,message) end
     end
     connect(import.Activated,function() importCode(raw.Text) end)
     connect(importFile.Activated,function()
@@ -3618,10 +3679,10 @@ local function initializeProfilesUI()
     connect(remove.Activated,function()
         if not api.find(selected) then result(false,"Выбери конфиг."); return end
         if confirm and confirm.kind=="delete" and confirm.id==selected and os.clock()<confirm.untilTime then
-            local ok,message=api.remove(selected); selected=nil; confirm=nil; result(ok,message)
-        else confirm={kind="delete",id=selected,untilTime=os.clock()+5}; result(false,"Повтори Delete в течение 5 секунд, чтобы удалить профиль.") end
+            local ok,message=api.remove(selected); selected=nil; renaming=false; confirm=nil; result(ok,message)
+        else confirm={kind="delete",id=selected,untilTime=os.clock()+5}; result(false,"Нажми «Подтвердить удаление» в течение 5 секунд, чтобы удалить конфиг.") end
     end)
-    describe(launcher,"Открыть библиотеку конфигов: сохранить, загрузить, импортировать или поделиться JSON.")
+    describe(launcher,"Сохранить настройки, создать конфиг, сделать копию или поделиться с другом.")
     api.uiStep=function()
         if not menu.Visible then api.close() end
         if confirm and os.clock()>confirm.untilTime then confirm=nil; if window.Visible then refresh() end end
