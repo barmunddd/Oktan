@@ -4107,25 +4107,30 @@ local function initializeEspArt()
         local edge=segment:FindFirstChild("ArtEdge")
         corner.CornerRadius=UDim.new(0,style==3 and 0 or 8)
         edge.Enabled=style~=3 and settings.espOpacity>0
-        edge.Transparency=.48; edge.Thickness=style==2 and 1 or .75
+        edge.Transparency=.3; edge.Thickness=style==2 and 1.2 or 1
         if style~=3 then
-            segment.BackgroundColor3=color:Lerp(Color3.fromRGB(235,245,250),style==2 and .7 or .38)
-            segment.BackgroundTransparency=1-(settings.espOpacity/100)*.84
+            segment.BackgroundColor3=color:Lerp(Color3.fromRGB(235,245,250),style==2 and .85 or .7)
+            segment.BackgroundTransparency=1-(settings.espOpacity/100)*.92
         end
     end
-    api.node=function(screen,point,color)
+    api.node=function(screen,point,color,head)
         screen.nodeUsed=(screen.nodeUsed or 0)+1
         local index=screen.nodeUsed
         local node=screen.nodes[index]
         if not node then
-            node=create("Frame",screen.container,{Name="SkeletonJoint",AnchorPoint=Vector2.new(.5,.5),Size=UDim2.fromOffset(3.5,3.5),BorderSizePixel=0,ZIndex=2})
+            node=create("Frame",screen.container,{Name="SkeletonJoint",AnchorPoint=Vector2.new(.5,.5),Size=UDim2.fromOffset(3,3),BorderSizePixel=0,ZIndex=2})
             rounded(node,8); stroke(node,Color3.fromRGB(6,12,18),.75).Transparency=.35
             screen.nodes[index]=node
         end
         node.Visible=settings.espOpacity>0
+        local diameter=head and 7 or settings.skeletonStyle==2 and 4 or 2.5
+        node.Size=UDim2.fromOffset(diameter,diameter)
         node.Position=UDim2.fromOffset(point.X,point.Y)
         node.BackgroundColor3=color:Lerp(Color3.fromRGB(240,248,251),.72)
-        node.BackgroundTransparency=1-settings.espOpacity/100
+        node.BackgroundTransparency=head and 1 or 1-settings.espOpacity/100
+        local edge=node:FindFirstChildOfClass("UIStroke")
+        edge.Color=head and color:Lerp(Color3.fromRGB(240,248,251),.72) or Color3.fromRGB(6,12,18)
+        edge.Transparency=head and 1-settings.espOpacity/100 or .35
     end
     api.highlight=function(marker,color)
         local style=settings.chamsStyle
@@ -4259,6 +4264,67 @@ do
 end
 local occupiedLabels = {}
 local labelMetrics = setmetatable({}, { __mode = "k" })
+do
+local function initializeLabelLayout()
+    local api={}
+    api.place=function(label,value,x,y,size,anchorX,anchorY,camera,color,padding)
+        label.Visible=false
+        if value=="" then return 0 end
+        local metrics=labelMetrics[label]
+        if not metrics or metrics.value~=value or metrics.size~=size then
+            local measured=game:GetService("TextService"):GetTextSize(value,size,Enum.Font.Gotham,Vector2.new(4096,100))
+            metrics={value=value,size=size,width=math.clamp(math.ceil(measured.X)+24,96,172)}; labelMetrics[label]=metrics
+        end
+        local width=math.min(metrics.width,camera.ViewportSize.X)
+        local _,breaks=value:gsub("\n","")
+        local height=(size+4)*(breaks+1)+(padding or 0)
+        local baseX=math.clamp(x-width*anchorX,0,math.max(0,camera.ViewportSize.X-width))
+        local baseY=math.clamp(y-height*anchorY,0,math.max(0,camera.ViewportSize.Y-height))
+        local function cells(left,top,callback)
+            for gx=math.floor(left/128),math.floor((left+width+2)/128) do
+                for gy=math.floor(top/64),math.floor((top+height+2)/64) do callback(gx..":"..gy) end
+            end
+        end
+        local function overlap(left,top)
+            local area,seen=0,{}
+            cells(left,top,function(key)
+                for _,other in ipairs(occupiedLabels[key] or {}) do
+                    if not seen[other] then
+                        seen[other]=true
+                        area+=math.max(0,math.min(left+width+3,other.right+3)-math.max(left,other.left))*math.max(0,math.min(top+height+3,other.bottom+3)-math.max(top,other.top))
+                    end
+                end
+            end)
+            return area
+        end
+        local left,top,best=baseX,baseY,math.huge
+        local function try(dx,dy)
+            local px=math.clamp(baseX+dx,0,math.max(0,camera.ViewportSize.X-width))
+            local py=math.clamp(baseY+dy,0,math.max(0,camera.ViewportSize.Y-height))
+            local area=overlap(px,py)
+            local score=area*100+math.abs(dx)+math.abs(dy)*1.2
+            if score<best then left,top,best=px,py,score end
+            return area==0
+        end
+        local stable=metrics.dx and math.abs(metrics.dx)<=96 and math.abs(metrics.dy or 0)<=110 and try(metrics.dx,metrics.dy or 0)
+        if not stable and not try(0,0) then
+            local step=math.min(96,width*.8)
+            for _,dy in ipairs({0,-height-6,-2*(height+6),height+6}) do
+                for _,dx in ipairs({0,-step,step}) do try(dx,dy) end
+            end
+        end
+        metrics.dx,metrics.dy=left-baseX,top-baseY
+        local rectangle={left=left,top=top,right=left+width,bottom=top+height}
+        cells(left,top,function(key) occupiedLabels[key]=occupiedLabels[key] or {}; table.insert(occupiedLabels[key],rectangle) end)
+        label.Position=UDim2.fromOffset(math.round(left),math.round(top)); label.Size=UDim2.fromOffset(width,height)
+        label.Text,label.TextSize,label.TextColor3,label.Visible=value,size,color,true
+        return metrics.dx,rectangle,width,height
+    end
+    return api
+end
+controlRows.labelLayout=initializeLabelLayout()
+end
+
 local function screenLabel(parent)
     return text(parent, "", {
         Visible = false, Font = Enum.Font.Gotham,
@@ -4268,6 +4334,7 @@ local function screenLabel(parent)
     })
 end
 local function placeLabel(label, value, x, y, size, anchorX, anchorY, camera, color, avoidOverlap, verticalPadding)
+    if label.Name=="PrismLayout" then return controlRows.labelLayout.place(label,value,x,y,size,anchorX,anchorY,camera,color,verticalPadding) end
     label.Visible = false
     if value == "" then return 0 end
     local metrics = labelMetrics[label]
@@ -4401,11 +4468,16 @@ end
 
 local function ensureCard(screen)
     if screen.infoCard then return end
-    screen.layoutLabel=screenLabel(screen.container)
+    screen.layoutLabel=screenLabel(screen.container); screen.layoutLabel.Name="PrismLayout"
     screen.infoCard=create("Frame",screen.container,{Name="EspIdentityCard",BackgroundColor3=Color3.fromRGB(10,17,23),BackgroundTransparency=.16,BorderSizePixel=0,ZIndex=2})
     rounded(screen.infoCard,8)
-    screen.infoRim=stroke(screen.infoCard,Color3.fromRGB(175,193,202)); screen.infoRim.Transparency=.78
+    screen.healthPill=create("Frame",screen.infoCard,{BackgroundTransparency=.8,BorderSizePixel=0,ZIndex=2,Visible=false}); rounded(screen.healthPill,5)
+    screen.identityAccent=create("Frame",screen.infoCard,{Position=UDim2.fromOffset(6,7),Size=UDim2.fromOffset(2,9),BackgroundTransparency=.15,BorderSizePixel=0,ZIndex=3}); rounded(screen.identityAccent,2)
+    screen.cardHalo=create("Frame",screen.container,{BackgroundTransparency=1,BorderSizePixel=0,ZIndex=1,Visible=false}); rounded(screen.cardHalo,10)
+    screen.haloEdge=stroke(screen.cardHalo,palette.accent,2); screen.haloEdge.Transparency=.88
+    screen.infoRim=stroke(screen.infoCard,Color3.fromRGB(175,193,202)); screen.infoRim.Transparency=.62
     for _,label in ipairs({screen.nameLabel,screen.healthLabel,screen.distanceLabel}) do label.Parent=screen.infoCard; label.ZIndex=3 end
+    create("UIGradient",screen.infoCard,{Rotation=105,Color=ColorSequence.new(Color3.fromRGB(245,250,255),Color3.fromRGB(130,150,175))})
     screen.hpTrack=create("Frame",screen.infoCard,{Position=UDim2.new(0,6,1,-3),Size=UDim2.new(1,-12,0,2),BackgroundColor3=Color3.fromRGB(42,57,65),BorderSizePixel=0,ZIndex=3})
     rounded(screen.hpTrack,2)
     screen.hpFill=create("Frame",screen.hpTrack,{Size=UDim2.fromScale(1,1),BackgroundColor3=Color3.fromRGB(140,225,180),BorderSizePixel=0,ZIndex=3}); rounded(screen.hpFill,2)
@@ -4418,6 +4490,8 @@ renderLabels=function(screen,candidate,low,high,camera,color)
     if settings.espStyle==1 then
         if screen.infoCard then
             screen.infoCard.Visible,screen.weaponChip.Visible,screen.anchorDot.Visible=false,false,false
+            screen.cardHalo.Visible=false
+            if screen.labelLeader then screen.labelLeader.Visible=false end
             for _,label in ipairs({screen.nameLabel,screen.healthLabel,screen.distanceLabel}) do label.Parent=screen.container; label.TextStrokeTransparency=.35; label.Font=Enum.Font.Gotham; label.TextXAlignment=Enum.TextXAlignment.Center end
         end
         classicLabels(screen,candidate,low,high,camera,color)
@@ -4442,21 +4516,25 @@ renderLabels=function(screen,candidate,low,high,camera,color)
     local shift,rectangle,width,height=placeLabel(screen.layoutLabel,value,center,low.Y-8,size,.5,1,camera,palette.text,true,8)
     screen.layoutLabel.Visible=false
     screen.infoCard.Visible=rectangle~=nil
+    screen.cardHalo.Visible=rectangle~=nil and not minimal and not settings.lowFx and not settings._fightFocus
     screen.nameLabel.Visible=name~=""
     screen.healthLabel.Visible=hp~=""
     screen.distanceLabel.Visible=distance~=""
     if rectangle then
         screen.infoCard.Position=UDim2.fromOffset(math.round(rectangle.left),math.round(rectangle.top))
         screen.infoCard.Size=UDim2.fromOffset(width,height)
-        screen.infoCard.BackgroundTransparency=minimal and 1 or .16
+        screen.cardHalo.Position=UDim2.fromOffset(math.round(rectangle.left)-2,math.round(rectangle.top)-2)
+        screen.cardHalo.Size=UDim2.fromOffset(width+4,height+4); screen.haloEdge.Color=color
+        screen.identityAccent.Visible=name~="" and not minimal; screen.identityAccent.BackgroundColor3=color
+        screen.infoCard.BackgroundTransparency=minimal and 1 or .08
         screen.infoRim.Enabled=not minimal
-        screen.infoRim.Color=isFriend(candidate.owner) and Color3.fromRGB(135,225,181) or color:Lerp(Color3.fromRGB(187,206,214),.8)
-        screen.nameLabel.Position=UDim2.fromOffset(8,3)
-        screen.nameLabel.Size=UDim2.new(1,-16,0,size+4)
+        screen.infoRim.Color=isFriend(candidate.owner) and Color3.fromRGB(135,225,181) or color:Lerp(Color3.fromRGB(187,206,214),.5)
+        screen.nameLabel.Position=UDim2.fromOffset(14,3)
+        screen.nameLabel.Size=UDim2.new(1,-22,0,size+4)
         screen.nameLabel.Text,screen.nameLabel.TextSize=name,size
         screen.nameLabel.Font=Enum.Font.GothamBold
         screen.nameLabel.TextColor3=Color3.fromRGB(237,243,246)
-        screen.nameLabel.TextXAlignment=Enum.TextXAlignment.Left
+        screen.nameLabel.TextXAlignment=Enum.TextXAlignment.Left; screen.nameLabel.TextTruncate=Enum.TextTruncate.AtEnd
         local y=name~="" and size+7 or 4
         local two=hp~="" and distance~=""
         screen.healthLabel.Position=UDim2.fromOffset(8,y)
@@ -4472,6 +4550,10 @@ renderLabels=function(screen,candidate,low,high,camera,color)
         local fraction=math.clamp(candidate.humanoid.Health/math.max(1,candidate.humanoid.MaxHealth),0,1)
         local hpColor=Color3.fromHSV(fraction/3,.4,.9)
         screen.healthLabel.TextColor3=hpColor
+        screen.healthPill.Visible=hp~="" and not minimal
+        screen.healthPill.Position=UDim2.fromOffset(5,y)
+        screen.healthPill.Size=UDim2.fromOffset(math.min(width-10,math.max(45,size*4.4)),size+2)
+        screen.healthPill.BackgroundColor3=hpColor
         screen.hpTrack.Visible=settings.health and not settings.healthBar
         screen.hpFill.BackgroundColor3=hpColor
         if screen.shownHp~=fraction then
@@ -4484,19 +4566,26 @@ renderLabels=function(screen,candidate,low,high,camera,color)
         end
     end
     local weapon=settings.weapon and heldItem(candidate.model)
-    local _,weaponRect,weaponWidth,weaponHeight=placeLabel(screen.weaponLabel,weapon and weapon.Name or "",center+shift,high.Y+6,math.max(10,size-1),.5,0,camera,Color3.fromRGB(215,229,235),false,4)
+    local _,weaponRect,weaponWidth,weaponHeight=placeLabel(screen.weaponLabel,weapon and weapon.Name or "",center,high.Y+6,math.max(10,size-1),.5,0,camera,Color3.fromRGB(215,229,235),false,4)
     screen.weaponChip.Visible=weaponRect~=nil and not minimal
     screen.weaponLabel.TextStrokeTransparency=minimal and .35 or 1
     if weaponRect then screen.weaponChip.Position=UDim2.fromOffset(math.round(weaponRect.left),math.round(weaponRect.top)); screen.weaponChip.Size=UDim2.fromOffset(weaponWidth,weaponHeight) end
-    if not screen.labelLeader then screen.labelLeader=create("Frame",screen.container,{BorderSizePixel=0,ZIndex=2}) end
-    screen.labelLeader.Visible=rectangle~=nil and math.abs(shift)>2
-    screen.labelLeader.BackgroundColor3=color
-    screen.labelLeader.BackgroundTransparency=.65
-    screen.labelLeader.Position=UDim2.fromOffset(math.round(math.min(center,center+shift)),math.round(low.Y-5))
-    screen.labelLeader.Size=UDim2.fromOffset(math.round(math.abs(shift)),1)
-    screen.anchorDot.Visible=screen.labelLeader.Visible
-    screen.anchorDot.BackgroundColor3=color
-    screen.anchorDot.Position=UDim2.fromOffset(math.round(center)-1,math.round(low.Y-6))
+    if not screen.labelLeader then screen.labelLeader=create("Frame",screen.container,{AnchorPoint=Vector2.new(.5,.5),BorderSizePixel=0,ZIndex=1}); rounded(screen.labelLeader,2) end
+    screen.labelLeader.Visible=false; screen.anchorDot.Visible=false
+    if rectangle then
+        local anchor=Vector2.new(center,low.Y-2)
+        local edge=Vector2.new(math.clamp(center,rectangle.left+8,rectangle.right-8),rectangle.bottom<anchor.Y and rectangle.bottom or rectangle.top)
+        local difference=anchor-edge
+        if difference.Magnitude>10 and difference.Magnitude<125 then
+            local midpoint=(anchor+edge)*.5
+            screen.labelLeader.Visible=true; screen.anchorDot.Visible=true
+            screen.labelLeader.Position=UDim2.fromOffset(midpoint.X,midpoint.Y)
+            screen.labelLeader.Size=UDim2.fromOffset(difference.Magnitude,1)
+            screen.labelLeader.Rotation=math.deg(math.atan2(difference.Y,difference.X))
+            screen.labelLeader.BackgroundColor3=color; screen.labelLeader.BackgroundTransparency=.7
+            screen.anchorDot.Position=UDim2.fromOffset(center-1.5,low.Y-3.5); screen.anchorDot.BackgroundColor3=color
+        end
+    end
 end
 
 end
@@ -4681,7 +4770,7 @@ local function renderScreenMarker(marker, camera, color)
             table.clear(screen.joints)
             local function considerJoint(joint)
                 if joint:IsA("Motor6D") and joint.Part0 and joint.Part1
-                    and joint.Part0.Parent == model and joint.Part1.Parent == model then
+                    and joint.Part0.Parent == model and joint.Part1.Parent == model and bodyNames[joint.Part0.Name] and bodyNames[joint.Part1.Name] then
                     table.insert(screen.joints, joint)
                 end
             end
@@ -4700,11 +4789,13 @@ local function renderScreenMarker(marker, camera, color)
         for _, joint in ipairs(screen.joints) do
             if joint.Parent and joint.Part0 and joint.Part1 and joint.Part0.Name~="HumanoidRootPart" and joint.Part1.Name~="HumanoidRootPart" then
                 local a,b=bodyPoint(joint.Part0),bodyPoint(joint.Part1)
-                if a and b then line(screen,a,b,color,nil,true) end
+                local distant=high.Y-low.Y<42
+                local detail=joint.Part0.Name:find("Hand",1,true) or joint.Part1.Name:find("Hand",1,true) or joint.Part0.Name:find("Foot",1,true) or joint.Part1.Name:find("Foot",1,true)
+                if a and b and (not distant or not detail) then line(screen,a,b,color,settings.skeletonStyle==3 and settings.lineWidth or math.clamp(settings.lineWidth,1.25,2.5),true) end
             end
         end
-        if settings.skeletonStyle==2 and not settings.lowFx and not settings._fightFocus then
-            for _,point in pairs(points) do if point then controlRows.espArt.node(screen,point,color) end end
+        if settings.skeletonStyle~=3 and high.Y-low.Y>=60 and not settings.lowFx and not settings._fightFocus then
+            for part,point in pairs(points) do if point then controlRows.espArt.node(screen,point,color,part.Name=="Head") end end
         end
     end
     for index = screen.used + 1, #screen.lines do screen.lines[index].Visible = false end
