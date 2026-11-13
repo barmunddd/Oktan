@@ -4159,6 +4159,27 @@ end
 controlRows.espArt=initializeEspArt()
 end
 
+do
+local function initializeDeveloperTools()
+    local enabled=false
+    if type(getgenv)=="function" then
+        local ok,env=pcall(getgenv)
+        enabled=ok and type(env)=="table" and env.OktanDeveloper==true
+    end
+    if enabled then
+        actionsRow.Size=UDim2.new(1,0,0,110)
+        for _,control in ipairs(actionsRow:GetChildren()) do
+            if control:IsA("TextButton") and control.Text=="Weapon Debug" then
+                control.Visible=true; control.Position=UDim2.fromOffset(12,66); control.Size=UDim2.fromOffset(200,32)
+            end
+        end
+        text(menu,"DEV",{Position=UDim2.new(1,-202,1,-34),Size=UDim2.fromOffset(60,25),TextSize=10,TextColor3=palette.accent})
+    end
+    return {enabled=enabled}
+end
+controlRows.devTools=initializeDeveloperTools()
+end
+
 local overrides = {}
 local function override(key, instance, property, value)
     local previous = overrides[key]
