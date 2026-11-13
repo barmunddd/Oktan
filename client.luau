@@ -3033,21 +3033,25 @@ end
 local function gconnect(event, callback)
     table.insert(graphConnections, event:Connect(callback))
 end
-local function wire(a, b)
-    if b.X>=588 then return end
-    local reach = (b.X - a.X) * 0.5
-    local path = create("Path2D", controlRows.graphCanvas, {
-        Name = "BranchCurve", Color3 = Color3.fromRGB(104, 116, 136),
-        Thickness = 1.5, ZIndex = 1, Visible = true,
-    })
+local function setWirePoints(path,a,b)
+    local reach=math.clamp((b.X-a.X)*.5,12,38)
     path:SetControlPoints({
-        Path2DControlPoint.new(UDim2.fromOffset(a.X, a.Y), UDim2.fromOffset(0, 0), UDim2.fromOffset(reach, 0)),
-        Path2DControlPoint.new(UDim2.fromOffset(b.X, b.Y), UDim2.fromOffset(-reach, 0), UDim2.fromOffset(0, 0)),
+        Path2DControlPoint.new(UDim2.fromOffset(a.X,a.Y),UDim2.fromOffset(0,0),UDim2.fromOffset(reach,0)),
+        Path2DControlPoint.new(UDim2.fromOffset(b.X,b.Y),UDim2.fromOffset(-reach,0),UDim2.fromOffset(0,0)),
     })
+end
+local function wire(a,b)
+    local leaf=b.X>=588 and controlRows.leafCanvas
+    local parent=leaf or controlRows.graphCanvas
+    local anchorY=a.Y
+    if leaf then a=Vector2.new(1,anchorY-14); b=Vector2.new(b.X-520,b.Y) end
+    local path=create("Path2D",parent,{Name=leaf and "FunctionBranch" or "BranchCurve",Color3=Color3.fromRGB(104,116,136),Thickness=1.5,ZIndex=1,Visible=true})
+    setWirePoints(path,a,b)
+    if leaf then table.insert(controlRows.functionBranches,{path=path,anchorY=anchorY,finish=b}) end
 end
 local function node(label, x, y, width, selected, callback)
     local parent=controlRows.graphCanvas
-    if x>=588 and controlRows.leafCanvas then parent=controlRows.leafCanvas; x-=566 end
+    if x>=588 and controlRows.leafCanvas then parent=controlRows.leafCanvas; x-=520 end
     local object = button(parent, label, UDim2.fromOffset(x, y), UDim2.fromOffset(width, 34))
     object.BackgroundTransparency = selected and 0.08 or 0.18
     object.TextColor3 = selected and palette.accent or palette.text
@@ -3112,7 +3116,7 @@ renderGraph = function()
     controlRows.studio.clearNodes()
     graph:ClearAllChildren()
     graph.CanvasPosition=Vector2.new(0,0); graph.ScrollingEnabled=false; graph.ScrollBarThickness=0
-    controlRows.leafCanvas=nil
+    controlRows.leafCanvas=nil; controlRows.functionBranches={}
     tooltip.Visible=false; hovered=nil
     controlRows.graphCanvas=create("Frame",graph,{Name="TreeCanvas",BackgroundTransparency=1,Size=UDim2.fromOffset(870,470),BorderSizePixel=0})
     for _, page in pairs(pages) do page.Visible = false end
@@ -3173,9 +3177,16 @@ renderGraph = function()
         end)
         if group == selectedGroup then selectedY = y + 17 end
     end
-    local leafScroll=create("ScrollingFrame",controlRows.graphCanvas,{Name="FunctionList",Position=UDim2.fromOffset(566,14),Size=UDim2.fromOffset(298,438),BackgroundTransparency=1,BorderSizePixel=0,ScrollBarThickness=3,ScrollBarImageColor3=palette.accent,ScrollingDirection=Enum.ScrollingDirection.Y,CanvasSize=UDim2.fromOffset(280,438)})
-    controlRows.leafCanvas=create("Frame",leafScroll,{Name="FunctionCanvas",Size=UDim2.fromOffset(280,438),BackgroundTransparency=1,BorderSizePixel=0})
-    wire(Vector2.new(520,selectedY),Vector2.new(566,233))
+    local leafScroll=create("ScrollingFrame",controlRows.graphCanvas,{Name="FunctionList",Position=UDim2.fromOffset(520,14),Size=UDim2.fromOffset(344,438),BackgroundTransparency=1,BorderSizePixel=0,ScrollBarThickness=3,ScrollBarImageColor3=palette.accent,ScrollingDirection=Enum.ScrollingDirection.Y,CanvasSize=UDim2.fromOffset(344,438)})
+    controlRows.leafCanvas=create("Frame",leafScroll,{Name="FunctionCanvas",Size=UDim2.fromOffset(344,438),BackgroundTransparency=1,BorderSizePixel=0})
+    local lastDelta
+    controlRows.updateFunctionBranches=function()
+        if not graph.Visible or not menu.Visible or not leafScroll.Parent then return end
+        local delta=(controlRows.graphCanvas.AbsolutePosition.Y-controlRows.leafCanvas.AbsolutePosition.Y)/math.max(.01,scale.Scale)
+        if delta==lastDelta then return end
+        lastDelta=delta
+        for _,branch in ipairs(controlRows.functionBranches) do setWirePoints(branch.path,Vector2.new(1,branch.anchorY+delta),branch.finish) end
+    end
     local leaves = {}
     for _, entry in ipairs(controlRows) do
         local definition = schema[entry.key]
@@ -3192,7 +3203,7 @@ renderGraph = function()
     for index, entry in ipairs(leaves) do
         local definition = schema[entry.key]
         local y = leafStart + (index - 1) * 40
-        create("Frame",controlRows.leafCanvas,{Position=UDim2.fromOffset(8,y+16),Size=UDim2.fromOffset(14,1),BackgroundColor3=palette.edge,BackgroundTransparency=.35,BorderSizePixel=0})
+        wire(Vector2.new(520, selectedY), Vector2.new(588, y + 17))
         local assigned = bindings[entry.key]
         local label = (entry.key:match("Hue$") and (entry.key == "menuHue" and "Menu Color" or entry.key == "espHue" and "ESP Color" or "FOV Color") or definition[3])
         if query ~= "" then label = (displayNames[entry.page] or entry.page) .. " / " .. label end
@@ -3281,6 +3292,7 @@ renderGraph = function()
         gconnect(control.MouseLeave, function() tooltip.Visible = false end)
     end
     if selectedCategory == "Настройки" and selectedGroup == "Клиент" then
+        wire(Vector2.new(520,selectedY),Vector2.new(588,leafStart+#leaves*40+17))
         node("Client / Quick Start", 588, leafStart + #leaves * 40, 258, false, function()
             openDetail("Client")
             moveDetail(actionsRow, 1)
@@ -3289,9 +3301,9 @@ renderGraph = function()
     end
     graph.CanvasSize=UDim2.fromOffset(870,465)
     controlRows.graphCanvas.Size=UDim2.fromOffset(870,465)
-    leafScroll.CanvasSize=UDim2.fromOffset(280,math.max(438,leafStart+#leaves*40+80))
+    leafScroll.CanvasSize=UDim2.fromOffset(344,math.max(438,leafStart+#leaves*40+80))
     controlRows.leafCanvas.Size=leafScroll.CanvasSize
-    if #leaves>0 then create("Frame",controlRows.leafCanvas,{Name="FunctionRail",Position=UDim2.fromOffset(8,leafStart+16),Size=UDim2.fromOffset(1,math.max(1,(#leaves-1)*40)),BackgroundColor3=palette.edge,BackgroundTransparency=.35,BorderSizePixel=0}) end
+    controlRows.updateFunctionBranches()
 end
 connect(back.Activated, function()
     clearDetail()
@@ -3941,9 +3953,17 @@ local function initializeCombatUI()
         local label=properties and (properties:GetAttribute("CallSign") or properties:GetAttribute("ItemName")) or model and (model:GetAttribute("DisplayName") or model.Name)
         local mode=held and held:GetAttribute("FireMode") or model and model:GetAttribute("FireMode")
         local magazine=held and held:FindFirstChild("Magazine")
-        magazine=referenced(magazine)
-        local current=stat(held,{"Ammo","CurrentAmmo","AmmoCount","Bullets"}) or stat(magazine,{"Ammo","CurrentAmmo","AmmoCount","Bullets"})
-        local capacity=stat(held,{"MaxAmmo","MagazineSize","AmmoCapacity"}) or stat(magazine,{"MaxAmmo","MagazineSize","AmmoCapacity"})
+        local attachments=held and held:FindFirstChild("Attachments")
+        if not magazine and attachments then
+            for _,attachment in ipairs(attachments:GetChildren()) do
+                if attachment:GetAttribute("Slot")=="Magazine" then magazine=attachment; break end
+            end
+        end
+        local definition=referenced(magazine)
+        local magazineProperties=definition and definition:FindFirstChild("ItemProperties")
+        local current=stat(held,{"Ammo","CurrentAmmo","AmmoCount","Bullets"}) or stat(magazine,{"LoadedAmmo","Ammo","CurrentAmmo","AmmoCount","Bullets"})
+        local capacity=stat(held,{"MaxAmmo","MagazineSize","AmmoCapacity"}) or stat(magazine,{"MaxLoadedAmmo","MaxAmmo","MagazineSize","AmmoCapacity"})
+            or stat(magazineProperties,{"MaxLoadedAmmo","MaxAmmo","MagazineSize","AmmoCapacity"}) or stat(definition,{"MaxLoadedAmmo","MaxAmmo","MagazineSize","AmmoCapacity"})
         if current and (current<0 or current%1~=0) then current=nil end
         if capacity and (capacity<=0 or capacity%1~=0) then capacity=nil end
         if current and capacity and current>capacity then current,capacity=nil,nil end
@@ -6208,6 +6228,7 @@ end
 
 local renderState = { elapsed = 1, visualElapsed = 1, perfElapsed = 0, perfFrames = 0, perfTotal = 0, perfEsp = 0, perfCamera = 0, perfPeak = 0 }
 RunService:BindToRenderStep(renderName, Enum.RenderPriority.Last.Value + 1, function(dt)
+    if controlRows.updateFunctionBranches and menu.Visible then controlRows.updateFunctionBranches() end
     controlRows.combat.step(dt)
     local perfStarted = settings.perfDebug and os.clock()
     local camera = workspace.CurrentCamera
