@@ -1,6 +1,6 @@
 -- Oktan experimental Underground test loader. Keys stay in memory and are never sent to the renewal URL.
 local RENEW_URL = "https://funpay.com/users/15095530/"
-local CLIENT_URL = "https://raw.githubusercontent.com/barmunddd/Oktan/c60e7cbb1c088b6684a4ddb39ff0c8f21a104b6c/client-beta.luau"
+local CLIENT_URL = "https://raw.githubusercontent.com/barmunddd/Oktan/889a96415191f5b4a7b5dd12c162a415e20f6657/client-beta.luau"
 local env = getgenv()
 assert(env.OktanDeveloper == true, "Beta requires getgenv().OktanDeveloper = true")
 local playerGui = game:GetService("Players").LocalPlayer:WaitForChild("PlayerGui")
