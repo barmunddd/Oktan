@@ -40,7 +40,7 @@ local definitions = {
     { "auroraEsp", false, "Aurora", "Отдельные метки сундуков с Aurora/Аврора в имени или DisplayName. Если имя модели другое, включи Containers.", "ESP" },
     { "espStyle", 2, "ESP Style", "Classic — прежние подписи; Glass — компактные карточки, здоровье и оружие под ногами; Minimal — без подложек; Compact — небольшие карточки с мягкой подложкой, ником, HP и дистанцией. В толпе дальние подписи скрываются без смещения. Chams и линии мягче в Glass/Minimal.", "ESP", 1, 4 },
     { "skinTextures", true, "Atmosphere Detail", "Тонкая архитектурная сетка поверх слоёв света. Light Menu скрывает фон целиком.", "Настройки" },
-    { "islandMusic", true, "Music Island", "Музыка в Dynamic Island: плавная смена трека, Pause/Stop и локальные строки LRC. В развёрнутом виде время, киллы и бинды сохраняются.", "Бинды" },
+    { "islandMusic", true, "Dock Music", "Музыка в Dynamic Island: плавная смена трека, Pause/Stop и локальные строки LRC. В развёрнутом виде время, киллы и бинды сохраняются.", "Бинды" },
     { "adaptiveEsp", true, "Adaptive ESP", "При большом числе целей снижает частоту только ESP: до 30 обновлений/с после 16 целей и до 20 после 32. Игровой FPS не ограничивает; все цели остаются видимыми.", "Настройки" },
     { "lowFx", false, "Light Menu", "Отключает размытие и фоновые зимние анимации меню. Игровые функции и выбранные цвета не меняет.", "Настройки" },
     { "perfDebug", false, "Frame Stats", "Измеряет время основного обработчика клиента, ESP и камеры в миллисекундах CPU. Видно внизу меню и в Export Debug; это не замер нагрузки всей игры или GPU.", "Настройки" },
@@ -95,8 +95,8 @@ local definitions = {
     { "fovValue", 100, "FOV Brightness", "Яркость круга области наведения.", "Наведение", 20, 100 },
     { "weapon", false, "Weapon", "Оружие в руках: название под ногами.", "ESP" },
     { "inspectRadius", 160, "Inspect Radius", "Для проверки инвентаря выбирается ближайший к центру экрана игрок внутри этого радиуса.", "Бинды", 30, 400 },
-    { "island", true, "Dynamic Island", "Компактная панель активных биндов.", "Бинды" },
-    { "islandY", 74, "Island Offset", "Отступ панели от верхней границы экрана в пикселях.", "Бинды", 0, 300 },
+    { "island", true, "Command Dock", "Док с независимыми секциями статуса, музыки и событий. Нажми шапку, чтобы открыть сводку и бинды.", "Бинды" },
+    { "islandY", 74, "Dock Offset", "Отступ панели от верхней границы экрана в пикселях.", "Бинды", 0, 300 },
     { "aim", false, "Aim Assist", "Включите и удерживайте клавишу наведения при закрытом меню.", "Наведение" },
     { "aimPlayers", true, "Players", "Разрешает выбирать персонажей других игроков для наведения.", "Наведение" },
     { "aimDummies", false, "Dummies", "Выбирает модели с Humanoid из папки workspace.DeltaQATargets в тестовом месте.", "Наведение" },
@@ -1815,7 +1815,7 @@ local island = create("Frame", gui, {
     BackgroundTransparency = 0.08, BorderSizePixel = 0, ClipsDescendants = true,
     ZIndex = 15,
 })
-rounded(island, 23)
+rounded(island, 14)
 stroke(island, palette.accent).Transparency = 0.58
 local islandScale = create("UIScale", island, { Scale = 1 })
 local islandHeader = text(island, "", { Size = UDim2.new(1, 0, 0, 44), TextSize = 12 }, "TextButton")
@@ -1857,7 +1857,7 @@ local islandKills = text(islandHeader, "", { Position = UDim2.fromOffset(228, 0)
 local islandChevron = text(islandHeader, "+", { Position = UDim2.fromOffset(378, 0), Size = UDim2.fromOffset(24, 44), TextSize = 17 })
 do
 local function initializeMusicIsland()
-    local root = create("Frame", islandHeader, {Name="MusicCapsule", Size=UDim2.new(1,0,0,48), BackgroundTransparency=1, Visible=false})
+    local root = create("Frame", island, {Name="MusicCapsule", Position=UDim2.fromOffset(0,64), Size=UDim2.new(1,0,0,56), BackgroundTransparency=1, Visible=false})
     local expanded = create("Frame", islandList, {Name="MusicRow", Size=UDim2.new(1,0,0,52), BackgroundTransparency=1, LayoutOrder=-10, Visible=false})
     local emblem = button(root,"",UDim2.fromOffset(10,9),UDim2.fromOffset(30,30))
     emblem.TextSize=16; emblem.TextColor3=palette.accent
@@ -1969,11 +1969,11 @@ local function initializeMusicIsland()
         local active=settings.island and settings.islandMusic and not settings._fightFocus and data and type(data.title)=="string" and data.title~=""
             and (not data.updatedAt or os.clock()-data.updatedAt<12)
         root.Visible=active==true
-        expanded.Visible=active==true and islandExpanded
-        islandBrand.Visible,islandClock.Visible,islandKills.Visible,islandChevron.Visible=not active or islandExpanded,not active or islandExpanded,not active or islandExpanded,not active or islandExpanded
-        settings._musicIslandWidth=active and not islandExpanded and (data.stopped and 440 or 500) or 420
+        expanded.Visible=false
+        islandBrand.Visible,islandClock.Visible,islandKills.Visible,islandChevron.Visible=true,true,true,true
+        settings._musicIslandWidth=440
         if not active then return end
-        local parent=islandExpanded and expanded or islandHeader
+        local parent=island
         if root.Parent~=parent then root.Parent=parent end
         local key=data.title.."\0"..tostring(data.artist)
         if key~=trackKey then trackKey=key; manual,manualPosition=false,0; api.reload(); signature=nil end
@@ -2671,7 +2671,7 @@ local function initializeHudMotion()
         api.previewElapsed+=dt
         logo.Visible=islandBrand.Visible
         logoRim.Color,divider.BackgroundColor3,titleLine.BackgroundColor3=palette.accent,palette.accent,palette.accent
-        divider.Visible=islandExpanded
+        divider.Visible=false
         local target=islandExpanded and 45 or 0
         islandChevron.Text="+"
         local rotation=islandChevron.Rotation or 0
@@ -2700,11 +2700,67 @@ end
 controlRows.hudMotion=initializeHudMotion()
 end
 
+do
+local function initializeCommandDock()
+    local api={height=64,width=440,elapsed=1}
+    island.Name="CommandDock"
+    island.Size=UDim2.fromOffset(440,64)
+    island.BackgroundColor3=Color3.fromRGB(17,20,30); island.BackgroundTransparency=.07
+    island:FindFirstChildOfClass("UICorner").CornerRadius=UDim.new(0,14)
+    island:FindFirstChildOfClass("UIStroke").Transparency=.78
+    islandHeader.Size=UDim2.new(1,0,0,60)
+    islandBrand.Position=UDim2.fromOffset(44,12); islandBrand.Size=UDim2.fromOffset(106,20); islandBrand.TextSize=14
+    text(islandHeader,"COMMAND DOCK",{Position=UDim2.fromOffset(44,33),Size=UDim2.fromOffset(112,12),TextSize=8,TextColor3=palette.muted,TextXAlignment=Enum.TextXAlignment.Left})
+    local mark=islandHeader:FindFirstChild("IslandMark"); if mark then mark.Position=UDim2.fromOffset(18,23); mark.Size=UDim2.fromOffset(14,14) end
+    islandClock.Position=UDim2.fromOffset(172,26); islandClock.Size=UDim2.fromOffset(92,20); islandClock.TextSize=15; islandClock.TextXAlignment=Enum.TextXAlignment.Left
+    islandKills.Position=UDim2.fromOffset(288,26); islandKills.Size=UDim2.fromOffset(108,20); islandKills.TextSize=12; islandKills.TextXAlignment=Enum.TextXAlignment.Left
+    for _,entry in ipairs({{172,"LOCAL TIME"},{288,"RAID / SESSION"}}) do
+        text(islandHeader,entry[2],{Position=UDim2.fromOffset(entry[1],12),Size=UDim2.fromOffset(108,10),TextSize=7,TextColor3=palette.muted,TextXAlignment=Enum.TextXAlignment.Left})
+    end
+    islandChevron.Position=UDim2.new(1,-32,0,17); islandChevron.Size=UDim2.fromOffset(20,26); islandChevron.TextSize=18
+    for _,x in ipairs({155,274}) do create("Frame",islandHeader,{Position=UDim2.fromOffset(x,18),Size=UDim2.fromOffset(1,26),BackgroundColor3=palette.muted,BackgroundTransparency=.84,BorderSizePixel=0}) end
+    local divider=create("Frame",island,{Name="DockDivider",Position=UDim2.fromOffset(14,60),Size=UDim2.new(1,-28,0,1),BackgroundColor3=palette.accent,BackgroundTransparency=.8,BorderSizePixel=0})
+    local event=create("Frame",island,{Name="SquadEventLane",Size=UDim2.new(1,-28,0,28),BackgroundColor3=palette.control,BackgroundTransparency=.45,BorderSizePixel=0,Visible=false})
+    rounded(event,7)
+    local eventText=text(event,"",{Position=UDim2.fromOffset(9,0),Size=UDim2.new(1,-18,1,0),TextSize=10,TextColor3=palette.text,TextXAlignment=Enum.TextXAlignment.Left,TextTruncate=Enum.TextTruncate.AtEnd})
+    local context=text(islandList,"SESSION / SHORTCUTS",{Name="DockContext",Size=UDim2.new(1,0,0,22),LayoutOrder=-30,TextSize=9,TextColor3=palette.muted,TextXAlignment=Enum.TextXAlignment.Left})
+    local previousEvent
+    api.step=function(dt)
+        local music=controlRows.musicIsland.root.Visible
+        local recent=settings._lastSquadEvent
+        local showEvent=settings.teamToasts and recent and os.clock()-recent.at<5
+        local y=music and 120 or 64
+        event.Visible=showEvent==true
+        event.Position=UDim2.fromOffset(14,y)
+        if showEvent then
+            if previousEvent~=recent then eventText.Text="@"..recent.name.."  ·  "..recent.message; previousEvent=recent end
+            y+=34
+        end
+        api.height=y
+        divider.Visible=music or showEvent or islandExpanded
+        divider.BackgroundColor3=palette.accent
+        islandScroll.Position=UDim2.fromOffset(14,y+4)
+        islandScroll.Size=UDim2.new(1,-28,1,-y-16)
+        islandScroll.ScrollBarThickness=3
+        api.elapsed+=dt
+        if api.elapsed<.2 then return end
+        api.elapsed=0
+        local session=settings._subscription
+        context.Text=session and "SESSION VERIFIED  /  SHORTCUTS" or "LOCAL SESSION  /  SHORTCUTS"
+        islandBrand.TextColor3=palette.accent
+    end
+    api.size=function() return UDim2.fromOffset(api.width,islandExpanded and math.max(380,api.height+180) or api.height) end
+    return api
+end
+controlRows.dock=initializeCommandDock()
+end
+
 controlRows.hudTiming={inventory=1,hud=1}
 local function updateHud(dt)
     controlRows.inspectorLive.step(dt)
     controlRows.inventoryArt.step(dt)
     controlRows.hudMotion.step(dt)
+    controlRows.dock.step(dt)
     controlRows.release.step(dt)
     controlRows.profiles.uiStep()
     controlRows.inspectorMotion.step(dt)
@@ -2716,11 +2772,11 @@ local function updateHud(dt)
         local hudScale = math.min(1, math.max(0.2, (viewport.X - 32) / math.max(390, settings._musicIslandWidth or 420)), math.max(0.2, (viewport.Y - 32) / 560))
         islandScale.Scale = hudScale
         inspectorScale.Scale = hudScale
-        island.Position = UDim2.new(0.5, 0, 0, math.min(settings.islandY, math.max(0, viewport.Y - 300 * hudScale)))
+        island.Position = UDim2.new(0.5, 0, 0, math.min(settings.islandY, math.max(0, viewport.Y - 380 * hudScale)))
     end
     island.Visible = settings.island
-    local desiredSize = islandExpanded and UDim2.fromOffset(420, 300) or UDim2.fromOffset(settings._musicIslandWidth or 420, 48)
-    island.Size = settings.motion and island.Size:Lerp(desiredSize, 1 - math.exp(-14 * dt)) or desiredSize
+    local desiredSize = controlRows.dock.size()
+    island.Size = settings.motion and not settings.lowFx and island.Size:Lerp(desiredSize, 1 - math.exp(-14 * dt)) or desiredSize
     islandScroll.Visible = islandExpanded
     if controlRows.hudTiming.hud >= 0.2 then
     controlRows.hudTiming.hud = 0
@@ -2769,10 +2825,10 @@ local treeGroups = {
     ESP = { "Общее", "Подписи", "Chams", "Skeleton", "Геометрия", "Цвет и оформление", "Loot", "Map" },
     ["Мир"] = { "Освещение", "Vegetation", "Visual Studio" },
     ["Камера"] = { "Зум", "Прицел", "Vision", "Viewmodel" },
-    ["Бинды"] = { "Инвентарь", "Dynamic Island", "Управление", "Назначения функций" },
+    ["Бинды"] = { "Инвентарь", "Command Dock", "Управление", "Назначения функций" },
     ["Настройки"] = { "Оформление", "Клиент", "Music", "Performance", "Combat" },
 }
-local settingGroup = { combatHudScale="Combat", combatHudPosition="Combat", combatHudHeight="Combat", chamsStyle="Chams", skeletonStyle="Skeleton", combatHud="Combat", fightFocus="Combat", teamToasts="Combat", mapPlayers="Map", mapNames="Map", mapFriendsOnly="Map", mapTextSize="Map", containerReach="Инвентарь", containerEsp="Loot", auroraEsp="Loot", espStyle = "Цвет и оформление", skinTextures = "Оформление", islandMusic = "Dynamic Island", adaptiveEsp = "Performance", lowFx = "Performance", perfDebug = "Performance", yandexPlay = "Music", spotifyPlay = "Music", musicPlay = "Music", musicVolume = "Music", musicRepeat = "Music", musicIndex = "Music", noRecoil = "Weapon Tuning", aimEase = "Область и плавность", aimFilter = "Область и плавность", graphics = "Visual Studio", gfxTier = "Visual Studio", gfxLook = "Visual Studio", echo = "Оформление", echoDelay = "Оформление", echoFreeze = "Оформление", motion = "Оформление", killFx = "Оформление", crossStyle = "Прицел", crossWidth = "Прицел", noLeaves = "Vegetation", noGrass = "Vegetation", corpseEsp = "Loot", itemEsp = "Loot", lootThrough = "Loot", lootRange = "Loot", lootTextSize = "Loot",
+local settingGroup = { combatHudScale="Combat", combatHudPosition="Combat", combatHudHeight="Combat", chamsStyle="Chams", skeletonStyle="Skeleton", combatHud="Combat", fightFocus="Combat", teamToasts="Combat", mapPlayers="Map", mapNames="Map", mapFriendsOnly="Map", mapTextSize="Map", containerReach="Инвентарь", containerEsp="Loot", auroraEsp="Loot", espStyle = "Цвет и оформление", skinTextures = "Оформление", islandMusic = "Command Dock", adaptiveEsp = "Performance", lowFx = "Performance", perfDebug = "Performance", yandexPlay = "Music", spotifyPlay = "Music", musicPlay = "Music", musicVolume = "Music", musicRepeat = "Music", musicIndex = "Music", noRecoil = "Weapon Tuning", aimEase = "Область и плавность", aimFilter = "Область и плавность", graphics = "Visual Studio", gfxTier = "Visual Studio", gfxLook = "Visual Studio", echo = "Оформление", echoDelay = "Оформление", echoFreeze = "Оформление", motion = "Оформление", killFx = "Оформление", crossStyle = "Прицел", crossWidth = "Прицел", noLeaves = "Vegetation", noGrass = "Vegetation", corpseEsp = "Loot", itemEsp = "Loot", lootThrough = "Loot", lootRange = "Loot", lootTextSize = "Loot",
     noVisor = "Vision", cameraFov = "Vision", cameraFovValue = "Vision",
     viewmodel = "Viewmodel", vmX = "Viewmodel", vmY = "Viewmodel", vmZ = "Viewmodel", sticky = "Наведение", noFog = "Освещение", bubbles = "Оформление", snow = "Оформление", snowDrifts = "Оформление", friendHats = "Оформление", espFps = "Цвет и оформление", adaptiveText = "Подписи",
     aim = "Наведение", aimPlayers = "Цели и проверки", aimDummies = "Цели и проверки",
@@ -2787,7 +2843,7 @@ local settingGroup = { combatHudScale="Combat", combatHudPosition="Combat", comb
     espOpacity = "Цвет и оформление", fillOpacity = "Цвет и оформление", lineWidth = "Цвет и оформление",
     bright = "Освещение", clock = "Освещение", hour = "Освещение",
     zoom = "Зум", zoomFov = "Зум", crosshair = "Прицел", length = "Прицел", gap = "Прицел",
-    inspectRadius = "Инвентарь", island = "Dynamic Island", islandY = "Dynamic Island",
+    inspectRadius = "Инвентарь", island = "Command Dock", islandY = "Command Dock",
     glass = "Оформление", blur = "Оформление",
     menuHue = "Оформление", menuSaturation = "Оформление", menuValue = "Оформление",
 }
@@ -3218,13 +3274,13 @@ local function initializeMenuNavigation()
     end
     local function save()
         local keys={}; for key in pairs(api.favorites) do table.insert(keys,key) end; table.sort(keys)
-        if type(writefile)=="function" then pcall(writefile,"Oktan-menu-favorites.json",HttpService:JSONEncode({version=1,styleVersion=4,keys=keys})) end
+        if type(writefile)=="function" then pcall(writefile,"Oktan-menu-favorites.json",HttpService:JSONEncode({version=1,styleVersion=5,keys=keys})) end
     end
-    if api.styleVersion~=4 then
+    if api.styleVersion~=5 then
         settings.menuHue,settings.menuSaturation,settings.menuValue=252,32,98
-        settings.espStyle,settings.chamsStyle,settings.skeletonStyle=4,4,4
-        settings.espHue,settings.espSaturation,settings.espValue=248,40,100
-        api.styleVersion=4; changed(); save()
+        settings.espStyle,settings.chamsStyle,settings.skeletonStyle=2,1,1
+        settings.espHue,settings.espSaturation,settings.espValue=78,45,96
+        api.styleVersion=5; changed(); save()
     end
     local starPins=setmetatable({},{__mode="k"})
     local starAsset,starLoading,starTried
@@ -3501,7 +3557,7 @@ renderGraph = function()
         if category == selectedCategory then categoryY = 62 + (index - 1) * 54 end
     end
     local groups = treeGroups[selectedCategory] or {}
-    if selectedCategory == "Настройки" then groups = { "Combat", "Оформление", "Dynamic Island", "Инвентарь", "Music", "Performance", "Клиент" } end
+    if selectedCategory == "Настройки" then groups = { "Combat", "Оформление", "Command Dock", "Инвентарь", "Music", "Performance", "Клиент" } end
     local selectedY = 90
     for index, group in ipairs(groups) do
         local gap=math.min(72,390/math.max(1,#groups-1))
@@ -4351,6 +4407,7 @@ local function initializeCombatUI()
         text(card,captions[kind] or "SQUAD",{Name="EventCaption",Position=UDim2.fromOffset(58,27),Size=UDim2.fromOffset(82,12),TextSize=8,TextColor3=tint,TextXAlignment=Enum.TextXAlignment.Left})
         text(card,message,{Position=UDim2.fromOffset(58,40),Size=UDim2.fromOffset(218,12),TextSize=9,TextColor3=palette.muted,TextXAlignment=Enum.TextXAlignment.Left})
         table.insert(api.notices,{key=key,card=card,edge=edge,progress=progress,zoom=zoom,color=tint,age=0})
+        settings._lastSquadEvent={name=name,message=message,kind=kind,at=os.clock()}
         return true
     end
     api.scanTeam=function()
@@ -4531,6 +4588,9 @@ local function initializeEspArt()
         local style=settings.chamsStyle
         local height=marker.screen and marker.screen.bodyHeight
         if height then
+            if height<20 then marker.tinyChams=true elseif height>28 then marker.tinyChams=false end
+        end
+        if height then
             if height<30 then marker.smallChams=true elseif height>42 then marker.smallChams=false end
         end
         local fillColor=style==3 and color or color:Lerp(Color3.fromRGB(225,240,249),.28)
@@ -4548,7 +4608,11 @@ local function initializeEspArt()
             fill=strength==0 and 1 or 1-math.min(.7,strength*.8+(marker.smallChams and .15 or .08))
             edge=1-settings.espOpacity/100
         end
-        local signature=table.concat({style,settings.fillOpacity,settings.espOpacity,tostring(color),tostring(marker.smallChams==true),style==4 and tostring(health<=.25) or ""},"/")
+        if marker.tinyChams and style~=3 then
+            edge=1
+            if style==1 then fillColor=color:Lerp(Color3.fromRGB(225,240,249),.12) end
+        end
+        local signature=table.concat({style,settings.fillOpacity,settings.espOpacity,tostring(color),tostring(marker.smallChams==true),tostring(marker.tinyChams==true),style==4 and tostring(health<=.25) or ""},"/")
         if marker.artSignature==signature then return end
         marker.artSignature=signature
         if marker.artTween then marker.artTween:Cancel(); marker.artTween=nil end
@@ -4704,7 +4768,7 @@ local function initializeLabelLayout()
         local metrics=labelMetrics[label]
         if not metrics or metrics.value~=value or metrics.size~=size then
             local measured=game:GetService("TextService"):GetTextSize(value,size,Enum.Font.Gotham,Vector2.new(4096,100))
-            metrics={value=value,size=size,width=math.clamp(math.ceil(measured.X)+24,96,172)}; labelMetrics[label]=metrics
+            metrics={value=value,size=size,width=math.clamp(math.ceil(measured.X)+24,size<=9 and 84 or 96,size<=9 and 120 or 172)}; labelMetrics[label]=metrics
         end
         local width=math.min(metrics.width,camera.ViewportSize.X)
         local _,breaks=value:gsub("\n","")
@@ -4936,6 +5000,7 @@ renderLabels=function(screen,candidate,low,high,camera,color)
     local prism=settings.espStyle==4
     local size=settings.textSize
     if settings.adaptiveText then size=math.clamp(math.floor(size*math.sqrt(math.max(1,high.Y-low.Y)/110)),10,settings.textSize) end
+    if high.Y-low.Y<20 then size=9 end
     local center=(low.X+high.X)*.5
     local now=os.clock()
     if not screen.metaAt or now-screen.metaAt>.12 then
@@ -4948,7 +5013,7 @@ renderLabels=function(screen,candidate,low,high,camera,color)
     local distance=settings.distance and tostring(math.round(screen.metaDistance*.28)).." м" or ""
     local meta=hp..(hp~="" and distance~="" and "     " or "")..distance
     local value=(allied and settings.names and name.."     ALLY" or name)..(name~="" and meta~="" and "\n" or "")..meta
-    local shift,rectangle,width,height=placeLabel(screen.layoutLabel,value,center,low.Y-8,size,.5,1,camera,palette.text,true,8)
+    local shift,rectangle,width,height=placeLabel(screen.layoutLabel,value,center,low.Y-8,size,.5,1,camera,palette.text,true,size<=9 and 4 or 8)
     screen.layoutLabel.Visible=false
     screen.infoCard.Visible=rectangle~=nil
     screen.cardHalo.Visible=false
@@ -4998,7 +5063,7 @@ renderLabels=function(screen,candidate,low,high,camera,color)
         screen.healthPill.Visible=hp~="" and not minimal and not prism
         screen.healthPill.Position=UDim2.fromOffset(5,y)
         screen.healthPill.Size=UDim2.fromOffset(math.min(width-10,math.max(45,size*4.4)),size+2)
-        screen.healthPill.BackgroundColor3=hpColor; screen.healthPill.BackgroundTransparency=.91
+        screen.healthPill.BackgroundColor3=hpColor; screen.healthPill.BackgroundTransparency=.84
         screen.hpTrack.Visible=settings.health and not settings.healthBar
         screen.hpFill.BackgroundColor3=hpColor
         if screen.shownHp~=fraction then
@@ -5333,14 +5398,14 @@ local function renderScreenMarker(marker, camera, color)
                 local a,b=bodyPoint(joint.Part0),bodyPoint(joint.Part1)
                 local distant=high.Y-low.Y<42
                 local detail=joint.Part0.Name:find("Hand",1,true) or joint.Part1.Name:find("Hand",1,true) or joint.Part0.Name:find("Foot",1,true) or joint.Part1.Name:find("Foot",1,true)
-                if a and b and high.Y-low.Y>=18 and (not distant or not detail) then line(screen,a,b,color,settings.skeletonStyle==3 and settings.lineWidth or distant and .85 or math.clamp(settings.lineWidth,1,1.75),true) end
+                if a and b and high.Y-low.Y>=24 and (not distant or not detail) then line(screen,a,b,color,settings.skeletonStyle==3 and settings.lineWidth or distant and .85 or math.clamp(settings.lineWidth,1,1.75),true) end
             end
         end
         if settings.skeletonStyle==2 and high.Y-low.Y>=80 and not settings.lowFx and not settings._fightFocus then
             for part,point in pairs(points) do if point then controlRows.espArt.node(screen,point,color,part.Name=="Head") end end
         end
     end
-    for index = screen.used + 1, #screen.lines do screen.lines[index].Visible = false end
+    for index = screen.used + 1, #screen.lines do local unused=screen.lines[index]; unused.Visible=false; local edge=unused:FindFirstChild("ArtEdge"); if edge then edge.Enabled=false end end
 end
 
 local markersByModel = {}
