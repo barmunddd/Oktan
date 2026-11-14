@@ -394,13 +394,15 @@ local function button(parent, label, position, size)
     stroke(result)
     if label~="" and parent.Name~="TreeCanvas" and parent.Name~="FunctionCanvas" and not parent:IsA("TextButton") then
         local hoverTween,rest
+        local hoverEdge=result:FindFirstChildOfClass("UIStroke")
         local function hover(active)
             if hoverTween then hoverTween:Cancel() end
-            if active then rest=result.BackgroundColor3 end
-            local target=active and (rest or palette.control):Lerp(palette.accent,.07) or rest or palette.control
+            if not hoverEdge then return end
+            if active then rest=hoverEdge.Transparency end
+            local target=active and math.max(0,(rest or .55)-.18) or rest or .55
             if settings.motion and not settings.lowFx then
-                hoverTween=TweenService:Create(result,TweenInfo.new(.2,Enum.EasingStyle.Quart,Enum.EasingDirection.Out),{BackgroundColor3=target}); hoverTween:Play()
-            else result.BackgroundColor3=target end
+                hoverTween=TweenService:Create(hoverEdge,TweenInfo.new(.2,Enum.EasingStyle.Quart,Enum.EasingDirection.Out),{Transparency=target}); hoverTween:Play()
+            else hoverEdge.Transparency=target end
         end
         result.MouseEnter:Connect(function() hover(true) end)
         result.MouseLeave:Connect(function() hover(false) end)
