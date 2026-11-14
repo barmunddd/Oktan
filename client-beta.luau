@@ -4198,13 +4198,14 @@ local function initializeUnderground()
         local character=player.Character
         local root=character and character:FindFirstChild("HumanoidRootPart")
         local camera=workspace.CurrentCamera
-        table.insert(api.events,{timeMs=math.round((os.clock()-api.startedAt)*1000),event=kind,message=message,position=root and root:IsA("BasePart") and point(root.CFrame.Position) or nil,target=session and point(session.target.Position),cameraType=camera and tostring(camera.CameraType),subjectClass=camera and camera.CameraSubject and camera.CameraSubject.ClassName})
+        local actual=root and root:IsA("BasePart") and root.CFrame.Position
+        table.insert(api.events,{timeMs=math.round((os.clock()-api.startedAt)*1000),event=kind,message=message,position=point(actual),target=session and point(session.target.Position),origin=session and point(session.origin.Position),surface=session and point(session.surface.Position),displacement=session and actual and point(actual-session.target.Position),cameraType=camera and tostring(camera.CameraType),subjectClass=camera and camera.CameraSubject and camera.CameraSubject.ClassName})
         if #api.events>120 then table.remove(api.events,1) end
     end
     api.writeReport=function()
         if not controlRows.devTools or not controlRows.devTools.enabled or type(writefile)~="function" then return false end
         local ok=pcall(function()
-            writefile("Oktan-underground-debug.json",HttpService:JSONEncode({format="OktanUndergroundDebug",version=1,placeId=game.PlaceId,state=api.state,events=api.events}))
+            writefile("Oktan-underground-debug.json",HttpService:JSONEncode({format="OktanUndergroundDebug",version=2,placeId=game.PlaceId,state=api.state,events=api.events}))
         end)
         api.reportSaved=ok
         return ok
@@ -4252,6 +4253,7 @@ local function initializeUnderground()
         local camera=workspace.CurrentCamera
         local function reject(message) settings.underground=false; announce(message); record("rejected",nil,message); api.writeReport(); return false end
         if not controlRows.devTools or not controlRows.devTools.enabled then return reject("Underground: экспериментальный режим доступен только с OktanDeveloper") end
+        if os.clock()<(api.retryAfter or 0) then return reject("Игра изменила позицию · повтор через "..math.ceil(api.retryAfter-os.clock()).." с") end
         api.startedAt=os.clock(); table.clear(api.events)
         if not root or not root:IsA("BasePart") or not human or human.Health<=0 or not camera then return reject("Underground: персонаж ещё не готов") end
         if root.Anchored then return reject("Underground: персонаж закреплён игрой") end
@@ -4297,7 +4299,11 @@ local function initializeUnderground()
         if session.root.Anchored then api.stop("Underground выключен: игра закрепила персонажа",false); return end
         if workspace.CurrentCamera~=session.camera or session.camera.CameraSubject~=session.proxy or session.camera.CameraType==Enum.CameraType.Scriptable then api.stop("Underground выключен: игра переключила камеру"); return end
         if controlRows.mapOverlay and controlRows.mapOverlay.isOpen() then api.stop("Underground выключен при открытии карты"); return end
-        if (session.root.CFrame.Position-session.target.Position).Magnitude>3 then api.stop("Underground выключен: позиция изменена игрой",false); return end
+        if (session.root.CFrame.Position-session.target.Position).Magnitude>3 then
+            api.retryAfter=os.clock()+3
+            api.stop("Underground остановлен: игра изменила позицию · пауза 3 с",false)
+            return
+        end
         if dt and dt>.25 then api.stop("Underground выключен: слишком большой пропуск кадров"); return end
         if focused and not menu.Visible and not Input:GetFocusedTextBox() then
             local forward=session.camera.CFrame.LookVector or Vector3.new(0,0,-1)
