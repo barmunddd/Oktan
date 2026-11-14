@@ -1,6 +1,6 @@
 -- Oktan authenticated loader. Keys stay in memory and are never sent to the renewal URL.
 local RENEW_URL = "https://funpay.com/users/15095530/"
-local CLIENT_URL = "https://raw.githubusercontent.com/barmunddd/Oktan/b8e293a5e7e3c826976847317b60bb766ebbe737/client.luau"
+local CLIENT_URL = "https://raw.githubusercontent.com/barmunddd/Oktan/9cc7a467ae5fbf440a0b43e917b588fcdfdb9089/client.luau"
 local env = getgenv()
 local playerGui = game:GetService("Players").LocalPlayer:WaitForChild("PlayerGui")
 local function makeStartup(name)
@@ -10,9 +10,9 @@ local function makeStartup(name)
         object.Parent=parent; return object
     end
     local screen=add("ScreenGui",playerGui,{Name=name,ResetOnSpawn=false,DisplayOrder=10000})
-    local card=add("Frame",screen,{Name="StudioAccess",Size=UDim2.fromOffset(480,230),Position=UDim2.new(.5,-240,.22,0),BackgroundColor3=Color3.fromRGB(8,13,18),BackgroundTransparency=.04,BorderSizePixel=0})
+    local card=add("Frame",screen,{Name="StudioAccess",Size=UDim2.fromOffset(480,230),Position=UDim2.new(.5,-240,.22,0),BackgroundColor3=Color3.fromRGB(18,19,33),BackgroundTransparency=.04,BorderSizePixel=0})
     add("UICorner",card,{CornerRadius=UDim.new(0,22)})
-    add("UIStroke",card,{Color=Color3.fromRGB(190,230,125),Transparency=.55,Thickness=1})
+    add("UIStroke",card,{Color=Color3.fromRGB(203,187,250),Transparency=.45,Thickness=1})
     local fit=add("UIScale",card,{Scale=1})
     pcall(function() card.AnchorPoint=Vector2.new(.5,0); card.Position=UDim2.new(.5,0,.22,0) end)
     pcall(function()
@@ -24,11 +24,12 @@ local function makeStartup(name)
         pcall(function() object.Font=Enum.Font.Gotham; object.TextXAlignment=Enum.TextXAlignment.Left end)
         return object
     end
-    local accent=Color3.fromRGB(192,235,125)
+    local accent=Color3.fromRGB(203,187,250)
     local mark=add("Frame",card,{Position=UDim2.fromOffset(25,26),Size=UDim2.fromOffset(22,22),Rotation=-14,BackgroundTransparency=1,BorderSizePixel=0})
     add("UICorner",mark,{CornerRadius=UDim.new(0,7)}); add("UIStroke",mark,{Color=accent,Thickness=3})
     text("OKTAN",UDim2.fromOffset(60,18),UDim2.fromOffset(180,28),Color3.fromRGB(238,245,249),20)
-    text("STUDIO / ACCESS",UDim2.fromOffset(61,45),UDim2.fromOffset(250,18),Color3.fromRGB(135,155,170),9)
+    text("ATELIER / ACCESS",UDim2.fromOffset(61,45),UDim2.fromOffset(250,18),Color3.fromRGB(155,157,181),9)
+    text("01 / CONNECT",UDim2.fromOffset(325,25),UDim2.fromOffset(130,20),accent,10)
     local status=text("Проверяем ключ…",UDim2.fromOffset(25,82),UDim2.fromOffset(430,60),Color3.fromRGB(227,237,244),14)
     local track=add("Frame",card,{Position=UDim2.fromOffset(25,160),Size=UDim2.new(1,-50,0,3),BackgroundColor3=Color3.fromRGB(34,46,54),BorderSizePixel=0,ClipsDescendants=true})
     add("UICorner",track,{CornerRadius=UDim.new(0,3)})
@@ -40,7 +41,22 @@ local function makeStartup(name)
         animation:Play()
     end)
     if screen.AncestryChanged then screen.AncestryChanged:Connect(function() if not screen.Parent and animation then animation:Cancel() end end) end
-    return screen,status,{card=card,track=track,beam=beam,foot=foot,stop=function() if animation then animation:Cancel() end end}
+    local function arrival()
+        pcall(function()
+            local tweenService=game:GetService("TweenService")
+            local portal=add("Frame",screen,{Name="ArrivalStar",AnchorPoint=Vector2.new(.5,.5),Position=UDim2.fromScale(.5,.5),Size=UDim2.fromOffset(1,1),BackgroundTransparency=1,BorderSizePixel=0})
+            for index=0,7 do
+                local ray=add("Frame",portal,{AnchorPoint=Vector2.new(.5,.5),Position=UDim2.fromScale(.5,.5),Size=UDim2.fromOffset(index%2==0 and 90 or 48,2),Rotation=index*45,BackgroundColor3=accent,BackgroundTransparency=.35,BorderSizePixel=0})
+                add("UIGradient",ray,{Transparency=NumberSequence.new({NumberSequenceKeypoint.new(0,1),NumberSequenceKeypoint.new(.5,0),NumberSequenceKeypoint.new(1,1)})})
+                tweenService:Create(ray,TweenInfo.new(.65,Enum.EasingStyle.Quart,Enum.EasingDirection.Out),{Size=UDim2.fromOffset(index%2==0 and 560 or 300,1),BackgroundTransparency=1}):Play()
+            end
+            tweenService:Create(card,TweenInfo.new(.45,Enum.EasingStyle.Quart,Enum.EasingDirection.In),{Position=UDim2.new(.5,0,.18,0),BackgroundTransparency=1}):Play()
+            for _,child in ipairs(card:GetDescendants()) do
+                if child:IsA("TextLabel") then tweenService:Create(child,TweenInfo.new(.35),{TextTransparency=1}):Play() end
+            end
+        end)
+    end
+    return screen,status,{card=card,track=track,beam=beam,foot=foot,arrival=arrival,stop=function() if animation then animation:Cancel() end end}
 end
 local ui,label,startup=makeStartup("OktanStartup")
 local function stage(message)
@@ -211,5 +227,6 @@ finished = true
 if ok and result == true then
     startup.stop(); startup.beam.Position=UDim2.new(0,0,0,0); startup.beam.Size=UDim2.new(1,0,1,0)
     stage("Готово. Приятной игры!"); startup.foot.Text="ACCESS VERIFIED / CLIENT READY"
-    local closing=ui; task.delay(.2,function() closing:Destroy() end)
+    startup.arrival()
+    local closing=ui; task.delay(.75,function() closing:Destroy() end)
 elseif not ok then startup.stop(); label.TextColor3=Color3.fromRGB(255,165,165); startup.foot.Text="STARTUP FAILED"; stage(tostring(result)); warn("[Oktan] Startup failed: " .. tostring(result)) end
