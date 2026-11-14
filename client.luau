@@ -26,8 +26,8 @@ local definitions = {
     { "combatHudScale", 100, "HUD Scale", "Размер Combat HUD в процентах. Автоматически ограничивается размером экрана.", "Настройки", 75, 135 },
     { "combatHudPosition", 1, "HUD Position", "Положение Combat HUD: по центру, слева или справа. Камера и прицел не меняются.", "Настройки", 1, 3 },
     { "combatHudHeight", 160, "HUD Height", "Расстояние Combat HUD от нижнего края экрана. Увеличь, если он перекрывает игровой интерфейс.", "Настройки", 100, 360 },
-    { "chamsStyle", 1, "Chams Style", "1 — Radiant: светлый цельный силуэт с перламутровым контуром; 2 — Outline: только контур; 3 — Classic. Fill Opacity регулирует интенсивность Radiant, 0 убирает заливку.", "ESP", 1, 3 },
-    { "skeletonStyle", 1, "Skeleton Style", "1 — Silk: тонкие светлые линии без точек; 2 — Jointed: суставы только вблизи; 3 — Classic. Вдали детализация уменьшается, чтобы скелет не превращался в чёрные точки.", "ESP", 1, 3 },
+    { "chamsStyle", 1, "Chams Style", "1 — Radiant: светлый цельный силуэт с перламутровым контуром; 2 — Outline: только контур; 3 — Classic; 4 — Spectral: лавандовая глубина, жемчужный контур, розовый при критическом HP. Fill Opacity регулирует интенсивность Radiant, 0 убирает заливку.", "ESP", 1, 4 },
+    { "skeletonStyle", 1, "Skeleton Style", "1 — Silk: тонкие светлые линии без точек; 2 — Jointed: суставы только вблизи; 3 — Classic; 4 — Ribbon: светлая нить с цветным краем без точек. Вдали детализация уменьшается, чтобы скелет не превращался в чёрные точки.", "ESP", 1, 4 },
     { "combatHud", true, "Combat HUD", "Компактно показывает твоё здоровье, оружие, патроны и режим огня. Неизвестные данные отмечены прочерком.", "Настройки" },
     { "fightFocus", false, "Fight Focus", "На время боя скрывает декоративные эффекты, сворачивает Island и приглушает встроенный Roblox-плеер. Настройки оформления сохраняются. СКМ — назначить бинд.", "Настройки" },
     { "teamToasts", true, "Team Notices", "Короткие уведомления о тиммейтах: вход/выход, появление рядом и подтверждённая смерть. Без постоянных карточек и спама.", "Настройки" },
@@ -38,8 +38,8 @@ local definitions = {
     { "containerReach", 250, "Container Reach", "Дальность Inspect для сундуков: 25–1500 studs. Наведи прицел на сундук; доступны только переданные клиенту предметы.", "Настройки", 25, 1500 },
     { "containerEsp", false, "Containers", "Метки доступных сундуков в папках Containers/Chests. Дальность — Loot Distance.", "ESP" },
     { "auroraEsp", false, "Aurora", "Отдельные метки сундуков с Aurora/Аврора в имени или DisplayName. Если имя модели другое, включи Containers.", "ESP" },
-    { "espStyle", 2, "ESP Style", "Classic — прежние подписи; Glass — компактные карточки, здоровье и оружие под ногами; Minimal — без подложек. Chams и линии мягче в Glass/Minimal.", "ESP", 1, 3 },
-    { "skinTextures", true, "Glass Textures", "Объёмное стекло с мягкими бликами и инеем. Отключи для более простого фона; Light Menu также скрывает декор.", "Настройки" },
+    { "espStyle", 2, "ESP Style", "Classic — прежние подписи; Glass — компактные карточки, здоровье и оружие под ногами; Minimal — без подложек; Prism — геометричные карточки с боковым акцентом. Chams и линии мягче в Glass/Minimal.", "ESP", 1, 4 },
+    { "skinTextures", true, "Atmosphere Detail", "Тонкая архитектурная сетка поверх слоёв света. Light Menu скрывает фон целиком.", "Настройки" },
     { "islandMusic", true, "Music Island", "Музыка в Dynamic Island: плавная смена трека, Pause/Stop и локальные строки LRC. В развёрнутом виде время, киллы и бинды сохраняются.", "Бинды" },
     { "adaptiveEsp", true, "Adaptive ESP", "При большом числе целей снижает частоту только ESP: до 30 обновлений/с после 16 целей и до 20 после 32. Игровой FPS не ограничивает; все цели остаются видимыми.", "Настройки" },
     { "lowFx", false, "Light Menu", "Отключает размытие и фоновые зимние анимации меню. Игровые функции и выбранные цвета не меняет.", "Настройки" },
@@ -79,7 +79,7 @@ local definitions = {
     { "vmZ", 0, "Offset Z", "Отдаление/приближение модели оружия, в сотых долях stud.", "Камера", -200, 200 },
     { "sticky", true, "Sticky Target", "Удерживать выбранную цель внутри круга.", "Наведение" },
     { "noFog", false, "No Fog", "Убрать туман и атмосферную дымку.", "Мир" },
-    { "bubbles", true, "Bubbles", "Плавные переливы на фоне меню.", "Настройки" },
+    { "bubbles", true, "Atmosphere", "Слои света и архитектурная сетка на фоне меню.", "Настройки" },
     { "snow", true, "Snow", "Снежинки в меню.", "Настройки" },
     { "snowDrifts", true, "Snowdrifts", "Анимированный снег у нижнего края меню.", "Настройки" },
     { "friendHats", true, "Friend Hats", "Зимние шапки на добавленных друзьях.", "Настройки" },
@@ -119,7 +119,7 @@ local definitions = {
     { "skeleton", false, "Skeleton", "Соединяет части тела по суставам Motor6D.", "ESP" },
     { "tracers", false, "Tracers", "Проводит линию от нижнего центра экрана до корневой части персонажа.", "ESP" },
     { "healthBar", false, "Health Bar", "Рисует слева от рамки шкалу текущего здоровья относительно максимального.", "ESP" },
-    { "range", 500, "Max Distance", "Максимальное расстояние для всех видов ESP.", "ESP", 25, 2000 },
+    { "range", 500, "Max Distance", "Радиус ESP в studs: до 6000 (1680 м). Подписи показаны в метрах.", "ESP", 25, 6000 },
     { "espHue", 235, "ESP Hue", "Выбирает оттенок всех маркеров по цветовому кругу от 0 до 359 градусов.", "ESP", 0, 359 },
     { "espOpacity", 80, "Line Opacity", "Задаёт видимость рамок, скелета и трассеров.", "ESP", 10, 100 },
     { "fillOpacity", 18, "Fill Opacity", "Непрозрачность внутренней заливки подсветки.", "ESP", 0, 100 },
@@ -382,7 +382,7 @@ local title = text(menu, "OKTAN", {
     TextSize = 23, Font = Enum.Font.GothamBold, TextXAlignment = Enum.TextXAlignment.Left,
 })
 text(menu, "ATELIER   /   WINTER", {
-    Position = UDim2.fromOffset(65, 48), Size = UDim2.fromOffset(340, 18),
+    Position = UDim2.fromOffset(65, 48), Size = UDim2.fromOffset(340, 14), TextSize=10,
     TextColor3 = palette.muted, TextXAlignment = Enum.TextXAlignment.Left,
 })
 local function button(parent, label, position, size)
@@ -410,7 +410,7 @@ local function button(parent, label, position, size)
     end
     return result
 end
-local hide = button(menu, "Hide", UDim2.new(1, -132, 0, 24), UDim2.fromOffset(108, 30))
+local hide = button(menu, "Hide", UDim2.new(1, -132, 0, 20), UDim2.fromOffset(108, 32))
 hide.Modal = true
 local reopen = button(gui, "OKTAN", UDim2.new(1, -118, 0, 55), UDim2.fromOffset(100, 30))
 reopen.Visible = false
@@ -1029,13 +1029,16 @@ local function initializeSubscriptionPanel()
     badge.Name, badge.TextSize, badge.TextColor3 = "SubscriptionBadge", 12, palette.accent
     describe(badge, "Оставшийся срок подписки. Нажми, чтобы посмотреть подробности и продлить доступ.")
     local form = create("Frame", pages["Настройки"], { Name = "SubscriptionPanel", Size = UDim2.new(1, -20, 0, 290), BackgroundTransparency = 0.25, BackgroundColor3 = palette.panel, Visible = false })
-    rounded(form, 16)
+    rounded(form, 20)
+    local edge=stroke(form,palette.accent); edge.Transparency=.75
+    local rail=create("Frame",form,{Position=UDim2.fromOffset(0,24),Size=UDim2.new(0,3,1,-48),BackgroundColor3=palette.accent,BorderSizePixel=0})
+    rounded(rail,3)
     text(form, "Твоя подписка", { Position = UDim2.fromOffset(24, 18), Size = UDim2.new(1, -48, 0, 30), TextSize = 21, TextXAlignment = Enum.TextXAlignment.Left })
     local state = text(form, "Проверка состояния...", { Position = UDim2.fromOffset(24, 58), Size = UDim2.new(1, -48, 0, 26), TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = palette.muted })
     local remaining = text(form, "", { Position = UDim2.fromOffset(24, 94), Size = UDim2.new(1, -48, 0, 38), TextSize = 24, TextColor3 = palette.accent, TextXAlignment = Enum.TextXAlignment.Left })
-    local renew = button(form, "Renew / Copy FunPay", UDim2.fromOffset(24, 152), UDim2.fromOffset(220, 40))
-    local result = text(form, "Продление у разработчика на FunPay", { Position = UDim2.fromOffset(260, 152), Size = UDim2.new(1, -284, 0, 40), TextWrapped = true, TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = palette.muted })
-    local url = text(form, "https://funpay.com/users/15095530/", { Position = UDim2.fromOffset(24, 212), Size = UDim2.new(1, -48, 0, 34), TextEditable = false, ClearTextOnFocus = false, TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = palette.muted }, "TextBox")
+    local renew = button(form, "Продлить / FunPay", UDim2.fromOffset(24, 166), UDim2.fromOffset(220, 40))
+    local result = text(form, "Продление у разработчика на FunPay", { Position = UDim2.fromOffset(24, 218), Size = UDim2.new(1, -48, 0, 20), TextSize=11, TextWrapped = true, TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = palette.muted })
+    local url = text(form, "https://funpay.com/users/15095530/", { Position = UDim2.fromOffset(24, 244), Size = UDim2.new(1, -48, 0, 24), TextSize=11, TextEditable = false, ClearTextOnFocus = false, TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = palette.muted }, "TextBox")
     local warning = text(gui, "", { Name = "OktanExpiryWarning", Position = UDim2.new(0.5, -230, 0, 124), Size = UDim2.fromOffset(460, 32), BackgroundColor3 = palette.background, BackgroundTransparency = 0.12, TextColor3 = Color3.fromRGB(255, 210, 140), Visible = false })
     rounded(warning, 12)
     local function renewNow()
@@ -1397,15 +1400,15 @@ local function initializeStudioSkin()
     rounded(emblem,6)
     local logoRim=stroke(emblem,palette.accent,4); logoRim.Name="DecorationStroke"; logoRim.Transparency=.08
     title.Position,title.Size=UDim2.fromOffset(65,15),UDim2.fromOffset(106,32)
-    controlRows.subscription.badge.Position=UDim2.fromOffset(184,17)
-    controlRows.subscription.badge.Size=UDim2.fromOffset(222,30)
-    local studio=button(menu,"Studio",UDim2.fromOffset(413,19),UDim2.fromOffset(44,30))
-    studio.TextSize=10; studio.TextColor3=Color3.fromRGB(205,245,145)
-    describe(studio,"Оформление с обложек: лайм, стекло, Bubbles и Motion. Выключает Light Menu; игровые настройки не меняет.")
+    controlRows.subscription.badge.Position=UDim2.fromOffset(184,20)
+    controlRows.subscription.badge.Size=UDim2.fromOffset(222,32)
+    local studio=button(menu,"Studio",UDim2.fromOffset(413,20),UDim2.fromOffset(44,32))
+    studio.TextSize=10; studio.TextColor3=Color3.fromRGB(203,187,250)
+    describe(studio,"Студийное оформление: лавандовый акцент, стекло и плавные переходы. Выключает Light Menu; настройки боя не меняет.")
     connect(studio.Activated,function()
-        settings.menuSaturation,settings.menuValue=55,96
+        settings.menuSaturation,settings.menuValue=32,98
         settings.bubbles,settings.skinTextures,settings.motion,settings.lowFx=true,true,true,false
-        setValue("menuHue",78)
+        setValue("menuHue",252)
     end)
     api.clearNodes=function() table.clear(nodes) end
     local function paint(object,entry,accent)
@@ -2752,7 +2755,7 @@ local function normalizeQuery(value)
     return string.lower(table.concat(output))
 end
 local search = text(menu, "", {
-    Position = UDim2.fromOffset(465, 24), Size = UDim2.fromOffset(300, 32),
+    Position = UDim2.fromOffset(465, 20), Size = UDim2.fromOffset(300, 32),
     BackgroundTransparency = 0.15, BackgroundColor3 = palette.control,
     PlaceholderText = "Search functions…  Ctrl+F", PlaceholderColor3 = palette.muted,
     ClearTextOnFocus = false, TextXAlignment = Enum.TextXAlignment.Left,
@@ -2986,7 +2989,7 @@ do
     local api=controlRows.friends
     friendForm=create("Frame",pages["Настройки"],{Name="FriendsPanel",Size=UDim2.new(1,-12,0,390),BackgroundTransparency=1,Visible=false})
     api.form=friendForm
-    text(friendForm,"YOUR SQUAD",{Position=UDim2.fromOffset(8,0),Size=UDim2.new(1,-16,0,22),TextColor3=palette.accent,TextSize=12,TextXAlignment=Enum.TextXAlignment.Left})
+    text(friendForm,"SQUAD / LIVE",{Position=UDim2.fromOffset(8,0),Size=UDim2.new(1,-16,0,22),TextColor3=palette.accent,TextSize=12,TextXAlignment=Enum.TextXAlignment.Left})
     local input=text(friendForm,"",{Name="FriendUsername",Position=UDim2.fromOffset(8,30),Size=UDim2.new(1,-132,0,36),BackgroundColor3=palette.control,BackgroundTransparency=.15,PlaceholderText="Add Roblox username…",ClearTextOnFocus=false,TextXAlignment=Enum.TextXAlignment.Left},"TextBox")
     rounded(input,11); create("UIPadding",input,{PaddingLeft=UDim.new(0,12)})
     local add=button(friendForm,"Add",UDim2.new(1,-112,0,30),UDim2.fromOffset(104,36))
@@ -3031,7 +3034,9 @@ do
         for i,name in ipairs(names) do
             if i>200 then break end
             local card=create("Frame",list,{Name="SquadCard",Size=UDim2.new(1,-8,0,72),BackgroundColor3=palette.panel,BackgroundTransparency=.16,BorderSizePixel=0,LayoutOrder=i})
-            rounded(card,13); stroke(card,palette.accent).Transparency=.85
+            rounded(card,16); stroke(card,palette.accent).Transparency=.88
+            local identity=create("Frame",card,{Name="SquadIdentity",Position=UDim2.fromOffset(0,16),Size=UDim2.new(0,2,1,-32),BackgroundColor3=palette.accent,BorderSizePixel=0})
+            rounded(identity,2)
             local initials=text(card,string.upper(name:sub(1,2)),{Position=UDim2.fromOffset(10,10),Size=UDim2.fromOffset(36,36),BackgroundColor3=palette.control,BackgroundTransparency=.1,TextColor3=palette.accent,TextSize=13})
             rounded(initials,12)
             text(card,"@"..name,{Position=UDim2.fromOffset(60,7),Size=UDim2.new(1,-170,0,22),TextSize=14,TextXAlignment=Enum.TextXAlignment.Left,TextTruncate=Enum.TextTruncate.AtEnd})
@@ -3198,7 +3203,7 @@ end
 do
 local function initializeMenuNavigation()
     local api={favorites={},actions={}}
-    local path=text(menu,"OKTAN",{Name="MenuBreadcrumb",Position=UDim2.fromOffset(30,79),Size=UDim2.fromOffset(850,14),TextSize=9,TextColor3=palette.muted,TextXAlignment=Enum.TextXAlignment.Left,TextTruncate=Enum.TextTruncate.AtEnd})
+    local path=text(menu,"OKTAN",{Name="MenuBreadcrumb",Position=UDim2.fromOffset(30,65),Size=UDim2.fromOffset(850,12),TextSize=9,TextColor3=palette.muted,TextXAlignment=Enum.TextXAlignment.Left,TextTruncate=Enum.TextTruncate.AtEnd})
     local launcher=button(menu,"Favorites",UDim2.new(1,-256,1,-34),UDim2.fromOffset(110,25))
     launcher.Name="FavoritesButton"; launcher.TextSize=10
     if type(readfile)=="function" then
@@ -3213,11 +3218,13 @@ local function initializeMenuNavigation()
     end
     local function save()
         local keys={}; for key in pairs(api.favorites) do table.insert(keys,key) end; table.sort(keys)
-        if type(writefile)=="function" then pcall(writefile,"Oktan-menu-favorites.json",HttpService:JSONEncode({version=1,styleVersion=3,keys=keys})) end
+        if type(writefile)=="function" then pcall(writefile,"Oktan-menu-favorites.json",HttpService:JSONEncode({version=1,styleVersion=4,keys=keys})) end
     end
-    if api.styleVersion~=3 then
+    if api.styleVersion~=4 then
         settings.menuHue,settings.menuSaturation,settings.menuValue=252,32,98
-        api.styleVersion=3; changed(); save()
+        settings.espStyle,settings.chamsStyle,settings.skeletonStyle=4,4,4
+        settings.espHue,settings.espSaturation,settings.espValue=248,40,100
+        api.styleVersion=4; changed(); save()
     end
     local starPins=setmetatable({},{__mode="k"})
     local starAsset,starLoading,starTried
@@ -3229,7 +3236,7 @@ local function initializeMenuNavigation()
         entry.front.Color3=saved and Color3.fromRGB(255,216,124) or Color3.fromRGB(188,204,236)
         if starAsset then entry.image.Image=starAsset end
         local loaded=starAsset~=nil and entry.image.IsLoaded==true
-        entry.image.Visible=loaded; entry.front.Visible=not loaded; entry.depth.Visible=not loaded
+        entry.image.Visible=starAsset~=nil; entry.front.Visible=not loaded; entry.depth.Visible=not loaded
     end
     local function loadStars()
         if starTried or starLoading then return end
@@ -3290,7 +3297,15 @@ local function initializeMenuNavigation()
     end
 
     api.updatePath=function(title)
-        path.Text="OKTAN   /   "..(displayNames[selectedCategory] or selectedCategory or "Menu").."   /   "..(selectedGroup or "")..(title and "   /   "..title or "")
+        local parts={"OKTAN"}
+        if title=="Friends" or title=="Subscription" or title=="Favorites" then
+            table.insert(parts,title)
+        else
+            for _,part in ipairs({displayNames[selectedCategory] or selectedCategory or "Menu",selectedGroup or "",title or ""}) do
+                if part~="" and parts[#parts]~=part then table.insert(parts,part) end
+            end
+        end
+        path.Text=table.concat(parts,"   /   ")
         path.TextColor3=palette.muted
     end
     api.toggle=function(key)
@@ -3426,11 +3441,11 @@ local function node(label, x, y, width, selected, callback)
     return object
 end
 renderGraph = function()
-    if controlRows.menuNav then controlRows.menuNav.updatePath() end
     if detail.Visible then return end
     if selectedCategory == "Бинды" or selectedCategory == "Friends" then
         selectedCategory, selectedGroup = "Настройки", "Оформление"
     end
+    if controlRows.menuNav then controlRows.menuNav.updatePath() end
     cancelAnimations()
     for _, connection in ipairs(graphConnections) do connection:Disconnect() end
     table.clear(graphConnections)
@@ -3580,7 +3595,7 @@ renderGraph = function()
                 local reset = button(panel, "Вернуть исходный", UDim2.fromOffset(8, 342), UDim2.fromOffset(200, 34))
                 reset.Activated:Connect(function() choose(initial) end)
             elseif entry.key == "combatHudPosition" or entry.key == "gfxTier" or entry.key == "gfxLook" or entry.key == "espStyle" or entry.key == "chamsStyle" or entry.key == "skeletonStyle" then
-                local names = entry.key == "combatHudPosition" and { "Center", "Left", "Right" } or entry.key == "chamsStyle" and { "Radiant", "Outline", "Classic" } or entry.key == "skeletonStyle" and { "Silk", "Jointed", "Classic" } or entry.key == "espStyle" and { "Classic", "Glass", "Minimal" } or entry.key == "gfxTier" and { "Low", "Balanced", "Ultra" } or { "Arctic", "Golden", "Neon", "Cinema", "Clean" }
+                local names = entry.key == "combatHudPosition" and { "Center", "Left", "Right" } or entry.key == "chamsStyle" and { "Radiant", "Outline", "Classic", "Spectral" } or entry.key == "skeletonStyle" and { "Silk", "Jointed", "Classic", "Ribbon" } or entry.key == "espStyle" and { "Classic", "Glass", "Minimal", "Prism" } or entry.key == "gfxTier" and { "Low", "Balanced", "Ultra" } or { "Arctic", "Golden", "Neon", "Cinema", "Clean" }
                 local panel = create("Frame", detailBody, { Size = UDim2.new(1, -20, 0, 95), BackgroundTransparency = 1, LayoutOrder = 1 })
                 table.insert(temporaryRows, panel)
                 local buttons = {}
@@ -3634,7 +3649,9 @@ connect(back.Activated, function()
     capture, pendingNumeric = nil, nil
     refreshAll()
     detail.Visible = false
+    graph.Visible = true
     renderGraph()
+    controlRows.menuNav.updatePath()
 end)
 connect(search:GetPropertyChangedSignal("Text"), function()
     graph.CanvasPosition = Vector2.new(0, 0)
@@ -4473,6 +4490,7 @@ local function initializeEspArt()
         local distant=bodyHeight and bodyHeight<80
         edge.Enabled=style~=3 and not distant and settings.espOpacity>0
         edge.Transparency=.7; edge.Thickness=style==2 and .75 or .5
+        if style==4 then edge.Color=color; edge.Transparency=.55; edge.Thickness=1 end
         if style~=3 then
             segment.BackgroundColor3=color:Lerp(Color3.fromRGB(235,245,250),style==2 and .72 or .55)
             segment.BackgroundTransparency=1-(settings.espOpacity/100)*(distant and .65 or .9)
@@ -4509,7 +4527,16 @@ local function initializeEspArt()
         local density=strength>0 and math.min(.92,math.sqrt(strength)+(marker.smallChams and .16 or 0)) or 0
         local fill=style==2 and 1 or style==3 and (1-strength) or 1-density
         local edge=1-(settings.espOpacity/100)*(style==1 and .78 or 1)
-        local signature=table.concat({style,settings.fillOpacity,settings.espOpacity,tostring(color),tostring(marker.smallChams==true)},"/")
+        local candidate=marker.candidate
+        local human=candidate and candidate.humanoid
+        local health=human and type(human.Health)=="number" and type(human.MaxHealth)=="number" and math.clamp(human.Health/math.max(1,human.MaxHealth),0,1) or 1
+        if style==4 then
+            fillColor=color:Lerp(Color3.fromRGB(140,125,203),.58)
+            outline=health<=.25 and Color3.fromRGB(255,138,159) or color:Lerp(Color3.fromRGB(206,199,255),.68)
+            fill=strength==0 and 1 or 1-math.min(.7,strength*.8+(marker.smallChams and .15 or .08))
+            edge=1-settings.espOpacity/100
+        end
+        local signature=table.concat({style,settings.fillOpacity,settings.espOpacity,tostring(color),tostring(marker.smallChams==true),style==4 and tostring(health<=.25) or ""},"/")
         if marker.artSignature==signature then return end
         marker.artSignature=signature
         if marker.artTween then marker.artTween:Cancel(); marker.artTween=nil end
@@ -4846,7 +4873,7 @@ local function classicLabels(screen, candidate, low, high, camera, color)
     if settings.names then table.insert(lines, (candidate.owner and candidate.owner.Name or candidate.model.Name) .. (isFriend(candidate.owner) and " [ALLY]" or "")) end
     if settings.health then table.insert(lines, string.format("%d HP", math.ceil(candidate.humanoid.Health))) end
     local distance = (candidate.root.Position - camera.CFrame.Position).Magnitude
-    if settings.distance then table.insert(lines, string.format("%d st", math.round(distance))) end
+    if settings.distance then table.insert(lines, string.format("%d м", math.round(distance*.28))) end
     screen.healthLabel.Visible, screen.distanceLabel.Visible = false, false
     local shift = placeLabel(screen.nameLabel, table.concat(lines, "\n"), center, low.Y - 4, size, 0.5, 1, camera, color)
     if not screen.labelLeader then screen.labelLeader = create("Frame", screen.container, { BorderSizePixel = 0, BackgroundTransparency = 0.45 }) end
@@ -4894,6 +4921,7 @@ renderLabels=function(screen,candidate,low,high,camera,color)
     ensureCard(screen)
     for _,label in ipairs({screen.nameLabel,screen.healthLabel,screen.distanceLabel}) do if label.Parent~=screen.infoCard then label.Parent=screen.infoCard end end
     local minimal=settings.espStyle==3
+    local prism=settings.espStyle==4
     local size=settings.textSize
     if settings.adaptiveText then size=math.clamp(math.floor(size*math.sqrt(math.max(1,high.Y-low.Y)/110)),10,settings.textSize) end
     local center=(low.X+high.X)*.5
@@ -4905,7 +4933,7 @@ renderLabels=function(screen,candidate,low,high,camera,color)
     local allied=isFriend(candidate.owner)
     local name=settings.names and (candidate.owner and candidate.owner.Name or candidate.model.Name) or allied and "ALLY" or ""
     local hp=settings.health and string.format("%d HP",math.ceil(candidate.humanoid.Health)) or ""
-    local distance=settings.distance and tostring(screen.metaDistance).." st" or ""
+    local distance=settings.distance and tostring(math.round(screen.metaDistance*.28)).." м" or ""
     local meta=hp..(hp~="" and distance~="" and "     " or "")..distance
     local value=(allied and settings.names and name.."     ALLY" or name)..(name~="" and meta~="" and "\n" or "")..meta
     local shift,rectangle,width,height=placeLabel(screen.layoutLabel,value,center,low.Y-8,size,.5,1,camera,palette.text,true,8)
@@ -4918,6 +4946,14 @@ renderLabels=function(screen,candidate,low,high,camera,color)
     screen.friendBadge.Visible=rectangle~=nil and allied and settings.names
     if rectangle then
         screen.infoCard.Position=UDim2.fromOffset(math.round(rectangle.left),math.round(rectangle.top))
+        screen.infoCard:FindFirstChildOfClass("UICorner").CornerRadius=UDim.new(0,prism and 5 or 8)
+        screen.infoCard.BackgroundColor3=prism and Color3.fromRGB(21,22,39) or Color3.fromRGB(15,18,24)
+        screen.identityAccent.Size=prism and UDim2.new(0,2,1,-12) or UDim2.fromOffset(2,9)
+        screen.identityAccent.Position=UDim2.fromOffset(6,6)
+        screen.hpTrack.Size=UDim2.new(1,-12,0,prism and 3 or 2)
+        screen.weaponChip.BackgroundColor3=prism and Color3.fromRGB(29,27,48) or Color3.fromRGB(15,18,24)
+        screen.weaponRim.Color=prism and color:Lerp(Color3.fromRGB(216,206,255),.65) or Color3.fromRGB(175,193,202)
+
         screen.infoCard.Size=UDim2.fromOffset(width,height)
         screen.cardHalo.Position=UDim2.fromOffset(math.round(rectangle.left)-2,math.round(rectangle.top)-2)
         screen.cardHalo.Size=UDim2.fromOffset(width+4,height+4); screen.haloEdge.Color=color
@@ -4928,7 +4964,7 @@ renderLabels=function(screen,candidate,low,high,camera,color)
         screen.nameLabel.Position=UDim2.fromOffset(14,3)
         screen.nameLabel.Size=UDim2.new(1,-22,0,size+4)
         if allied and settings.names then screen.nameLabel.Size=UDim2.new(1,-58,0,size+4) end
-        screen.nameLabel.Text,screen.nameLabel.TextSize=name,size
+        screen.nameLabel.Text,screen.nameLabel.TextSize=name,prism and size+1 or size
         screen.nameLabel.Font=Enum.Font.GothamBold
         screen.nameLabel.TextColor3=allied and Color3.fromRGB(146,242,211) or Color3.fromRGB(237,243,246)
         screen.nameLabel.TextXAlignment=Enum.TextXAlignment.Left; screen.nameLabel.TextTruncate=Enum.TextTruncate.AtEnd
@@ -4947,7 +4983,7 @@ renderLabels=function(screen,candidate,low,high,camera,color)
         local fraction=math.clamp(candidate.humanoid.Health/math.max(1,candidate.humanoid.MaxHealth),0,1)
         local hpColor=Color3.fromHSV(fraction/3,.4,.9)
         screen.healthLabel.TextColor3=hpColor
-        screen.healthPill.Visible=hp~="" and not minimal
+        screen.healthPill.Visible=hp~="" and not minimal and not prism
         screen.healthPill.Position=UDim2.fromOffset(5,y)
         screen.healthPill.Size=UDim2.fromOffset(math.min(width-10,math.max(45,size*4.4)),size+2)
         screen.healthPill.BackgroundColor3=hpColor; screen.healthPill.BackgroundTransparency=.91
@@ -5329,6 +5365,18 @@ local function initializeWinter()
         table.insert(separators, divider)
     end
     local bubbles, flakes, drifts, hats = {}, {}, {}, {}
+    local atmosphere=create("Frame",decoration,{Name="Atmosphere",Size=UDim2.fromScale(1,1),BackgroundTransparency=1,BorderSizePixel=0,ZIndex=0})
+    for index=1,2 do
+        local light=create("Frame",atmosphere,{Name="LightPlane",Position=UDim2.fromScale(index==1 and -.1 or .58,index==1 and .1 or .55),Size=UDim2.fromScale(.65,.45),Rotation=index==1 and -24 or 156,BackgroundColor3=palette.accent,BackgroundTransparency=.93,BorderSizePixel=0,ZIndex=0})
+        create("UIGradient",light,{Rotation=90,Transparency=NumberSequence.new({NumberSequenceKeypoint.new(0,1),NumberSequenceKeypoint.new(.45,.3),NumberSequenceKeypoint.new(1,1)})})
+    end
+    for index=1,18 do
+        create("Frame",atmosphere,{Name="GridLine",Position=UDim2.fromScale(index/19,0),Size=UDim2.new(0,1,1,0),BackgroundColor3=Color3.fromRGB(165,172,208),BackgroundTransparency=.97,BorderSizePixel=0,ZIndex=0})
+    end
+    for index=1,10 do
+        create("Frame",atmosphere,{Name="GridLine",Position=UDim2.fromScale(0,index/11),Size=UDim2.new(1,0,0,1),BackgroundColor3=Color3.fromRGB(165,172,208),BackgroundTransparency=.975,BorderSizePixel=0,ZIndex=0})
+    end
+
     local hatElapsed=0
     -- Procedural glass: soft halos, a Fresnel rim and a small specular reflection.
     -- Four fixed hosts; animation only changes transforms, never creates instances.
@@ -5338,7 +5386,7 @@ local function initializeWinter()
         { x = 0.71, y = 0.88, size = 126, phase = 4.7 },
         { x = 0.28, y = 0.89, size = 88, phase = 6.1 },
     }
-    for index, style in ipairs(orbStyle) do
+    for index, style in ipairs({}) do
         local host = create("Frame", decoration, { Name = "GlassBubble", AnchorPoint = Vector2.new(0.5, 0.5),
             Size = UDim2.fromOffset(style.size, style.size), BackgroundTransparency = 1, BorderSizePixel = 0, ZIndex = 0 })
         local halos = {}
@@ -5424,6 +5472,11 @@ local function initializeWinter()
         decorVisible = decoration.Visible
         if repaint then
             decorElapsed = 0
+            atmosphere.Visible=settings.bubbles and not settings.lowFx
+            for _,plane in ipairs(atmosphere:GetChildren()) do if plane.Name=="GridLine" then plane.Visible=settings.skinTextures end end
+            if palette.accent~=decorAccent then
+                for _,plane in ipairs(atmosphere:GetChildren()) do if plane.Name=="LightPlane" then plane.BackgroundColor3=palette.accent end end
+            end
             local changedColor = palette.accent ~= decorAccent
             decorAccent = palette.accent
             decorBubbles, decorSnow, decorDrifts, decorMotion = settings.bubbles, settings.snow, settings.snowDrifts, settings.motion
@@ -5971,7 +6024,7 @@ local function initializeLootESP()
                 mark.label.TextColor3 = mark.kind=="container" and (mark.aurora and Color3.fromRGB(190,163,255) or palette.accent) or mark.kind == "corpse" and Color3.fromRGB(255, 156, 125) or Color3.fromRGB(115, 229, 185)
                 local name = object:GetAttribute("DisplayName")
                 name = type(name) == "string" and name or object.Name
-                mark.label.Text = (mark.kind == "corpse" and "CORPSE · " or mark.kind=="container" and "CONTAINER · " or "") .. name .. "\n" .. math.round(distance) .. " st"
+                mark.label.Text = (mark.kind == "corpse" and "CORPSE · " or mark.kind=="container" and "CONTAINER · " or "") .. name .. "\n" .. math.round(distance*.28) .. " м"
             end
         end
     end
