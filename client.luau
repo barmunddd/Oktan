@@ -2974,7 +2974,7 @@ do
     bindButton(quick,"friendPick",UDim2.new(1,-144,0,18),UDim2.fromOffset(130,28))
     local searchBox=text(friendForm,"",{Name="FriendSearch",Position=UDim2.fromOffset(8,155),Size=UDim2.new(1,-165,0,30),BackgroundColor3=palette.control,BackgroundTransparency=.4,PlaceholderText="Search squad…",ClearTextOnFocus=false,TextXAlignment=Enum.TextXAlignment.Left},"TextBox")
     rounded(searchBox,9); create("UIPadding",searchBox,{PaddingLeft=UDim.new(0,11)})
-    local countLabel=text(friendForm,"",{Position=UDim2.new(1,-150,0,155),Size=UDim2.fromOffset(142,30),TextSize=11,TextColor3=palette.muted,TextXAlignment=Enum.TextXAlignment.Right})
+    local countLabel=text(friendForm,"",{Position=UDim2.new(1,-150,0,209),Size=UDim2.fromOffset(142,30),TextSize=11,TextColor3=palette.muted,TextXAlignment=Enum.TextXAlignment.Right})
     local list=create("ScrollingFrame",friendForm,{Name="SquadCards",Position=UDim2.fromOffset(8,198),Size=UDim2.new(1,-16,0,186),BackgroundTransparency=1,BorderSizePixel=0,AutomaticCanvasSize=Enum.AutomaticSize.Y,CanvasSize=UDim2.fromOffset(0,0),ScrollBarThickness=3})
     local cards={}
     local function roster()
@@ -2989,7 +2989,13 @@ do
         countLabel.Text=string.format("%d saved • %d here",saved,here)
         for name,entry in pairs(cards) do
             local other=players[name]
-            entry.presence.Text=other and "ON SERVER" or "SAVED TEAMMATE"
+            entry.presence.Text=(controlRows.friendServers and controlRows.friendServers.caption(name)) or (other and "НА ЭТОМ СЕРВЕРЕ" or "Сервер неизвестен")
+            local remote=controlRows.friendServers and controlRows.friendServers.records[name]
+            local id=(other and other.UserId) or (remote and remote.userId)
+            if controlRows.friendServers then id=controlRows.friendServers.avatar(name,id) end
+            if type(id)=="number" and id>0 then
+                entry.avatar.Image="rbxthumb://type=AvatarHeadShot&id="..string.format("%.0f",id).."&w=150&h=150"; entry.avatar.Visible=true
+            end
             entry.presence.TextColor3=other and Color3.fromRGB(125,231,183) or palette.muted
             entry.dot.BackgroundColor3=other and Color3.fromRGB(125,231,183) or Color3.fromRGB(92,107,119)
         end
@@ -3002,7 +3008,7 @@ do
         table.sort(names)
         for i,name in ipairs(names) do
             if i>200 then break end
-            local card=create("Frame",list,{Name="SquadCard",Size=UDim2.new(1,-8,0,56),BackgroundColor3=palette.panel,BackgroundTransparency=.16,BorderSizePixel=0,LayoutOrder=i})
+            local card=create("Frame",list,{Name="SquadCard",Size=UDim2.new(1,-8,0,72),BackgroundColor3=palette.panel,BackgroundTransparency=.16,BorderSizePixel=0,LayoutOrder=i})
             rounded(card,13); stroke(card,palette.accent).Transparency=.85
             local initials=text(card,string.upper(name:sub(1,2)),{Position=UDim2.fromOffset(10,10),Size=UDim2.fromOffset(36,36),BackgroundColor3=palette.control,BackgroundTransparency=.1,TextColor3=palette.accent,TextSize=13})
             rounded(initials,12)
@@ -3011,7 +3017,9 @@ do
             local dot=create("Frame",card,{Position=UDim2.fromOffset(61,36),Size=UDim2.fromOffset(5,5),BorderSizePixel=0}); rounded(dot,5)
             local remove=button(card,"Remove",UDim2.new(1,-94,0,14),UDim2.fromOffset(82,28)); remove.TextSize=11
             remove.Activated:Connect(function() api.remove(name) end)
-            cards[name]={presence=presence,dot=dot}
+            local avatar=create("ImageLabel",card,{Name="FriendAvatar",Position=UDim2.fromOffset(10,10),Size=UDim2.fromOffset(36,36),BackgroundColor3=palette.control,BackgroundTransparency=.1,Visible=false}); rounded(avatar,12)
+            presence.Size=UDim2.new(1,-180,0,30); presence.TextSize=11; presence.TextWrapped=true
+            cards[name]={presence=presence,dot=dot,avatar=avatar}
         end
         if #names==0 then
             text(list,query=="" and "Пока никого нет • добавь username или используй Quick Add" or "Совпадений нет",{Size=UDim2.new(1,-10,0,72),TextColor3=palette.muted,TextWrapped=true,TextSize=13})
@@ -3028,6 +3036,141 @@ do
         elapsed+=dt
         if elapsed>=1 and menu.Visible and detail.Visible and friendForm.Parent==detailBody then elapsed=0; updatePresence() end
     end
+end
+
+do
+local function initializeFriendServers()
+    local session=settings._subscription
+    local api={enabled=false,records={},avatars={},queue={},elapsed=30,avatarElapsed=0,alive=true,busy=false,generation=0,message="Передача сервера выключена"}
+    local form=controlRows.friends.form
+    form.Size=UDim2.new(1,-12,0,444)
+    local oldSearch=form:FindFirstChild("FriendSearch")
+    local list=form:FindFirstChild("SquadCards")
+    if oldSearch then oldSearch.Position=UDim2.fromOffset(8,209) end
+    if list then list.Position=UDim2.fromOffset(8,252) end
+    local toggle=button(form,"Share Server · OFF",UDim2.fromOffset(8,151),UDim2.fromOffset(192,34))
+    toggle.Name="ShareServer"
+    local status=text(form,api.message,{Name="ServerPresenceStatus",Position=UDim2.fromOffset(212,149),Size=UDim2.new(1,-220,0,42),TextSize=10,TextWrapped=true,TextXAlignment=Enum.TextXAlignment.Left,TextColor3=palette.muted})
+    describe(toggle,"Показывать твой текущий сервер другим пользователям OKTAN, которые добавили твой ник в Friends. Выключено при каждом запуске; после отключения статус исчезает в течение 90 секунд даже при обрыве связи.")
+    local function available() return session and type(session.presence)=="function" end
+    local function visible() return menu.Visible and detail.Visible and form.Parent==detailBody end
+    local function request(op,data)
+        if not available() then return nil,404 end
+        return session.presence(op,data)
+    end
+    api.parseHeader=function(value,job)
+        if type(value)~="string" or #value>600 or type(job)~="string" or #job~=36 then return nil end
+        local region,instance=value:match("Server Location:%s*([%w%-]+)%s*|%s*([%x%-]+)")
+        if region and instance and #instance==36 and instance:lower()==job:lower() then return region.." · "..instance:sub(1,8) end
+    end
+    local function label()
+        -- Only explicit native metadata; never guess a premium server number.
+        for _,name in ipairs({"ServerName","ServerLabel"}) do
+            local ok,value=pcall(function() return game:GetAttribute(name) end)
+            if ok and type(value)=="string" and #value>0 and #value<=80 and not value:find("[%c]") then return value end
+        end
+        local owner=player:FindFirstChildOfClass("PlayerGui")
+        if owner then
+            if api.header and api.header.Parent and api.header:IsDescendantOf(owner) then
+                local value=api.parseHeader(api.header.Text,game.JobId)
+                if value then return value end
+            end
+            -- A bounded traversal on the 30-second heartbeat, never in RenderStep.
+            local queue={owner}; local index=1
+            while index<=#queue and index<=2000 do
+                local object=queue[index]; index+=1
+                if object~=gui then
+                    if object:IsA("TextLabel") and object.Visible then
+                        local value=api.parseHeader(object.Text,game.JobId)
+                        if value then api.header=object; return value end
+                    end
+                    for _,child in ipairs(object:GetChildren()) do if #queue<2000 then table.insert(queue,child) end end
+                end
+            end
+        end
+        return ""
+    end
+    api.error=function(code)
+        if code==404 then return "Нужно обновить сервис статусов" end
+        if code==403 then return "Доступ к статусам ещё не выдан" end
+        if code==401 then return "Подписка недоступна" end
+        return "Сервис статусов не отвечает"
+    end
+    api.poll=function()
+        if api.busy or not api.alive then return end
+        api.busy=true
+        local generation=api.generation
+        task.spawn(function()
+            local ok,problem=pcall(function()
+                if api.enabled then
+                    local result,code=request("share",{username=player.Name,user_id=player.UserId,place_id=game.PlaceId,job_id=game.JobId,label=label()})
+                    if api.alive and generation==api.generation then api.message=result and "Твой сервер передаётся · обновление 30 с" or api.error(code) end
+                end
+                if api.alive and generation==api.generation and visible() then
+                    local names={}
+                    for name in pairs(friendNames) do if #names<200 then table.insert(names,name) end end
+                    local result,code=request("list",{friends=names})
+                    if api.alive and generation==api.generation then
+                        table.clear(api.records)
+                        if result and type(result.players)=="table" then
+                            for index,entry in ipairs(result.players) do
+                                if index>200 then break end
+                                if type(entry)=="table" and type(entry.username)=="string" and friendNames[string.lower(entry.username)] and type(entry.job_id)=="string" and type(entry.place_id)=="number" and type(entry.age)=="number" and entry.age>=0 and entry.age<90 then
+                                    api.records[string.lower(entry.username)]={label=type(entry.label)=="string" and entry.label:sub(1,80) or "",job=entry.job_id,place=entry.place_id,userId=entry.user_id,expires=os.clock()+90-entry.age}
+                                end
+                            end
+                            if not api.enabled then api.message="Видны только друзья с включённым Share Server" end
+                        elseif not api.enabled then api.message=api.error(code) end
+                    end
+                end
+            end)
+            -- A completed heartbeat must not resurrect sharing after an OFF click.
+            if not api.alive or (generation~=api.generation and not api.enabled) then pcall(request,"hide") end
+            if not ok and api.alive then api.message="Не удалось обновить статусы" end
+            api.busy=false
+        end)
+    end
+    api.setSharing=function(enabled)
+        api.enabled=enabled==true; api.generation+=1; api.elapsed=30
+        toggle.Text=api.enabled and "Share Server · ON" or "Share Server · OFF"
+        api.message=api.enabled and "Подключаем передачу сервера…" or "Передача выключена"
+        if not api.enabled then task.spawn(function() pcall(request,"hide") end) end
+    end
+    connect(toggle.Activated,function() api.setSharing(not api.enabled) end)
+    api.caption=function(name)
+        local entry=api.records[name]
+        if not entry or entry.expires<=os.clock() then return nil end
+        if entry.job==game.JobId and entry.place==game.PlaceId then return "OKTAN · НА ЭТОМ СЕРВЕРЕ" end
+        return entry.label~="" and entry.label or "Сервер неизвестен"
+    end
+    api.avatar=function(name,id)
+        if type(id)=="number" and id>0 then api.avatars[name]=id end
+        if api.avatars[name]==nil then api.avatars[name]=false; table.insert(api.queue,name) end
+        return api.avatars[name]
+    end
+    api.step=function(dt)
+        api.elapsed+=dt
+        api.avatarElapsed+=dt
+        if visible() and api.avatarElapsed>=1 and not api.resolving and #api.queue>0 then
+            api.avatarElapsed=0; api.resolving=true
+            local name=table.remove(api.queue,1)
+            task.spawn(function()
+                local ok,id=pcall(function() return Players:GetUserIdFromNameAsync(name) end)
+                if api.alive and friendNames[name] and ok and type(id)=="number" and id>0 then api.avatars[name]=id end
+                api.resolving=false
+            end)
+        end
+        if api.elapsed>=30 and (api.enabled or visible()) then api.elapsed=0; api.poll() end
+        if visible() then status.Text=api.message; toggle.TextColor3=api.enabled and palette.accent or palette.muted end
+    end
+    table.insert(cleanups,1,function()
+        local shared=api.enabled
+        api.alive=false; api.generation+=1; api.enabled=false; table.clear(api.records)
+        if shared then task.spawn(function() pcall(request,"hide") end) end
+    end)
+    return api
+end
+controlRows.friendServers=initializeFriendServers()
 end
 
 local function gconnect(event, callback)
@@ -6237,6 +6380,7 @@ RunService:BindToRenderStep(renderName, Enum.RenderPriority.Last.Value + 1, func
     controlRows.mapOverlay.step(dt)
     settings._mapOpen=controlRows.mapOverlay.isOpen()
     overlay.Visible=not settings._mapOpen
+    controlRows.friendServers.step(dt)
     controlRows.friends.step(dt)
     controlRows.studio.step()
     updateWinter(dt)
