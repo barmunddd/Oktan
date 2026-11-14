@@ -305,8 +305,8 @@ local function saveConfig()
 end
 
 local palette = {
-    background = Color3.fromRGB(11, 13, 17), panel = Color3.fromRGB(20, 23, 29),
-    control = Color3.fromRGB(29, 33, 40), edge = Color3.fromRGB(102, 113, 129),
+    background = Color3.fromRGB(16, 18, 27), panel = Color3.fromRGB(26, 29, 44),
+    control = Color3.fromRGB(37, 41, 59), edge = Color3.fromRGB(102, 113, 129),
     accent = Color3.fromRGB(238, 238, 243), text = Color3.fromRGB(240, 240, 243),
     muted = Color3.fromRGB(156, 165, 180),
 }
@@ -1410,7 +1410,7 @@ local function initializeStudioSkin()
     api.clearNodes=function() table.clear(nodes) end
     local function paint(object,entry,accent)
         if not object.Parent then return end
-        object.BackgroundColor3=entry.selected and palette.control:Lerp(accent,.12) or palette.control
+        object.BackgroundColor3=entry.selected and palette.control:Lerp(accent,.24) or palette.control
         entry.rim.Color=entry.selected and accent or Color3.fromRGB(120,143,158)
         entry.rim.Transparency=entry.selected and .32 or .79
         object.TextColor3=entry.selected and accent or palette.text
@@ -3199,7 +3199,7 @@ do
 local function initializeMenuNavigation()
     local api={favorites={},actions={}}
     local path=text(menu,"OKTAN",{Name="MenuBreadcrumb",Position=UDim2.fromOffset(30,79),Size=UDim2.fromOffset(850,14),TextSize=9,TextColor3=palette.muted,TextXAlignment=Enum.TextXAlignment.Left,TextTruncate=Enum.TextTruncate.AtEnd})
-    local launcher=button(menu,"Favorites",UDim2.new(1,-264,1,-40),UDim2.fromOffset(116,26))
+    local launcher=button(menu,"Favorites",UDim2.new(1,-256,1,-34),UDim2.fromOffset(110,25))
     launcher.Name="FavoritesButton"; launcher.TextSize=10
     if type(readfile)=="function" then
         pcall(function()
@@ -3207,13 +3207,88 @@ local function initializeMenuNavigation()
             if #raw>8192 then return end
             local data=HttpService:JSONDecode(raw)
             if type(data)~="table" or data.version~=1 or type(data.keys)~="table" then return end
+            api.styleVersion=data.styleVersion
             for index,key in ipairs(data.keys) do if index<=24 and type(key)=="string" and schema[key] then api.favorites[key]=true end end
         end)
     end
     local function save()
         local keys={}; for key in pairs(api.favorites) do table.insert(keys,key) end; table.sort(keys)
-        if type(writefile)=="function" then pcall(writefile,"Oktan-menu-favorites.json",HttpService:JSONEncode({version=1,keys=keys})) end
+        if type(writefile)=="function" then pcall(writefile,"Oktan-menu-favorites.json",HttpService:JSONEncode({version=1,styleVersion=3,keys=keys})) end
     end
+    if api.styleVersion~=3 then
+        settings.menuHue,settings.menuSaturation,settings.menuValue=252,32,98
+        api.styleVersion=3; changed(); save()
+    end
+    local starPins=setmetatable({},{__mode="k"})
+    local starAsset,starLoading,starTried
+    local function paintStar(pin)
+        local entry=starPins[pin]; if not entry or not pin.Parent then return end
+        local saved=api.favorites[entry.key]==true
+        pin:SetAttribute("FavoriteState",saved)
+        entry.image.ImageRectOffset=Vector2.new(saved and 64 or 0,0)
+        entry.front.Color3=saved and Color3.fromRGB(255,216,124) or Color3.fromRGB(188,204,236)
+        if starAsset then entry.image.Image=starAsset end
+        local loaded=starAsset~=nil and entry.image.IsLoaded==true
+        entry.image.Visible=loaded; entry.front.Visible=not loaded; entry.depth.Visible=not loaded
+    end
+    local function loadStars()
+        if starTried or starLoading then return end
+        starTried=true
+        local register=getcustomasset or getsynasset
+        if type(register)~="function" or type(writefile)~="function" then return end
+        starLoading=true
+        task.spawn(function()
+            local ok,result=pcall(function()
+                local file="OktanAssets/favorite-stars-v3.png"
+                local cached,bytes=pcall(function() return readfile(file) end)
+                if not cached or type(bytes)~="string" or #bytes~=8857 or bytes:sub(1,8)~="\137PNG\13\10\26\10" then
+                    local raw=game:HttpGet("https://raw.githubusercontent.com/barmunddd/Oktan/26a1a5b455896439e4e19d64d7fd688869db8333/assets/ui/favorite-stars-v3.hex")
+                    if type(raw)~="string" or #raw~=17714 or raw:find("[^%x]") then error("Invalid star sprite") end
+                    bytes=raw:gsub("%x%x",function(pair) return string.char(tonumber(pair,16)) end)
+                    if bytes:sub(1,8)~="\137PNG\13\10\26\10" then error("Invalid PNG") end
+                    if type(makefolder)=="function" then pcall(makefolder,"OktanAssets") end
+                    writefile(file,bytes)
+                end
+                return register(file)
+            end)
+            starLoading=false
+            if ok and type(result)=="string" and #result>0 then starAsset=result; for pin in pairs(starPins) do paintStar(pin) end end
+        end)
+    end
+    api.makePin=function(key,object)
+        local pin=button(object,"",UDim2.new(1,-4,.5,-13),UDim2.fromOffset(26,26))
+        pin.Name="FavoritePin"; pin.BackgroundTransparency=1; pin.ZIndex=5
+        local border=pin:FindFirstChildOfClass("UIStroke"); if border then border.Enabled=false end
+        local host=create("Frame",pin,{Size=UDim2.fromScale(1,1),BackgroundTransparency=1,ZIndex=6})
+        local zoom=create("UIScale",host,{Scale=1})
+        local image=create("ImageLabel",host,{Name="FavoriteStarSprite",Size=UDim2.fromScale(1,1),BackgroundTransparency=1,ImageRectSize=Vector2.new(64,64),Visible=false,ZIndex=8})
+        local depth=create("Path2D",host,{Name="StarDepth",Color3=Color3.fromRGB(48,51,76),Thickness=2.5,ZIndex=6})
+        local front=create("Path2D",host,{Name="StarOutline",Color3=palette.accent,Thickness=1.3,ZIndex=7})
+        local points,shadow={},{}
+        for index=0,10 do
+            local angle=-math.pi/2+(index%10)*math.pi/5
+            local radius=index%2==0 and 10 or 4.6
+            local x,y=13+math.cos(angle)*radius,12+math.sin(angle)*radius
+            table.insert(points,Path2DControlPoint.new(UDim2.fromOffset(x,y),UDim2.fromOffset(0,0),UDim2.fromOffset(0,0)))
+            table.insert(shadow,Path2DControlPoint.new(UDim2.fromOffset(x,y+1.5),UDim2.fromOffset(0,0),UDim2.fromOffset(0,0)))
+        end
+        front:SetControlPoints(points); depth:SetControlPoints(shadow)
+        starPins[pin]={key=key,image=image,front=front,depth=depth}
+        local hoverTween
+        local function scaleTo(value)
+            if hoverTween then hoverTween:Cancel() end
+            if settings.motion and not settings.lowFx then hoverTween=TweenService:Create(zoom,TweenInfo.new(.18,Enum.EasingStyle.Quart,Enum.EasingDirection.Out),{Scale=value}); hoverTween:Play() else zoom.Scale=1 end
+        end
+        pin.MouseEnter:Connect(function() scaleTo(1.12) end)
+        pin.MouseLeave:Connect(function() scaleTo(1) end)
+        pin.AncestryChanged:Connect(function() if not pin.Parent then if hoverTween then hoverTween:Cancel() end; starPins[pin]=nil end end)
+        image:GetPropertyChangedSignal("IsLoaded"):Connect(function() paintStar(pin) end)
+        pin.Activated:Connect(function() if api.toggle(key) then paintStar(pin); scaleTo(1) end end)
+        describe(pin,"Звезда: добавить или убрать из избранного. Золотая — сохранено, серебряная — не сохранено.")
+        paintStar(pin); loadStars()
+        return pin
+    end
+
     api.updatePath=function(title)
         path.Text="OKTAN   /   "..(displayNames[selectedCategory] or selectedCategory or "Menu").."   /   "..(selectedGroup or "")..(title and "   /   "..title or "")
         path.TextColor3=palette.muted
@@ -3239,22 +3314,15 @@ local function initializeMenuNavigation()
     end
     api.register=function(key,action,object)
         api.actions[key]=action
-        local pin=button(object,api.favorites[key] and "*" or "+",UDim2.new(1,-25,0,7),UDim2.fromOffset(19,20))
-        pin.Name="FavoritePin"; pin.BackgroundTransparency=1; pin.TextSize=16; pin.ZIndex=5
-        local border=pin:FindFirstChildOfClass("UIStroke"); if border then border.Enabled=false end
-        pin.TextColor3=api.favorites[key] and palette.accent or palette.muted
         local padding=object:FindFirstChildOfClass("UIPadding"); if padding then padding.PaddingRight=UDim.new(0,32) end
-        pin.Activated:Connect(function()
-            if api.toggle(key) then pin.Text=api.favorites[key] and "*" or "+"; pin.TextColor3=api.favorites[key] and palette.accent or palette.muted end
-        end)
-        describe(pin,"Избранное: + — добавить, * — убрать. Открывается кнопкой Favorites внизу меню.")
+        api.makePin(key,object)
     end
     api.showFavorites=function()
         openDetail("Favorites")
         local keys={}; for key in pairs(api.favorites) do table.insert(keys,key) end
         table.sort(keys,function(a,b) return schema[a][3]<schema[b][3] end)
         if #keys==0 then
-            local empty=text(detailBody,"Добавь нужные функции кнопкой + справа от названия.\nЗдесь будут быстрые переходы к их настройкам.",{Size=UDim2.new(1,-20,0,88),TextSize=14,TextColor3=palette.muted,TextWrapped=true})
+            local empty=text(detailBody,"Нажми на звезду справа от нужной функции.\nЗдесь появятся быстрые переходы к её настройкам.",{Size=UDim2.new(1,-20,0,88),TextSize=14,TextColor3=palette.muted,TextWrapped=true})
             table.insert(temporaryRows,empty)
         end
         for index,key in ipairs(keys) do
@@ -3320,7 +3388,7 @@ local function node(label, x, y, width, selected, callback)
     create("UIPadding", object, { PaddingLeft = UDim.new(0, 24), PaddingRight = UDim.new(0, 10) })
     local indicator = create("Frame", object, {
         AnchorPoint = Vector2.new(0, 0.5),
-        Position = UDim2.new(0, 10, 0.5, 0), Size = UDim2.fromOffset(2, 10),
+        Name="SelectionIndicator", Position = UDim2.new(0, -14, 0.5, 0), Size = UDim2.fromOffset(2, 10),
         BackgroundColor3 = palette.accent, BackgroundTransparency = selected and 0.1 or 1,
         BorderSizePixel = 0,
     })
@@ -3588,7 +3656,7 @@ local function applyTheme()
     for _, object in ipairs(island:GetDescendants()) do
         if object:IsA("UIStroke") then object.Color = accent end
     end
-    menu.BackgroundColor3 = Color3.fromRGB(11, 13, 17)
+    menu.BackgroundColor3 = Color3.fromRGB(16, 18, 27)
     for _, object in ipairs(menu:GetDescendants()) do
         if object:IsA("UIStroke") and object.Name ~= "DecorationStroke" and object.Name ~= "StudioNodeRim" then object.Color = accent; object.Transparency = 0.8 end
         if object:IsA("ScrollingFrame") then object.ScrollBarImageColor3 = accent end
@@ -4795,6 +4863,7 @@ local function ensureCard(screen)
     screen.layoutLabel=screenLabel(screen.container); screen.layoutLabel.Name="PrismLayout"
     screen.infoCard=create("Frame",screen.container,{Name="EspIdentityCard",BackgroundColor3=Color3.fromRGB(15,18,24),BackgroundTransparency=.16,BorderSizePixel=0,ZIndex=2})
     rounded(screen.infoCard,8)
+    screen.friendBadge=text(screen.infoCard,"ALLY",{Name="FriendBadge",Position=UDim2.new(1,-41,0,4),Size=UDim2.fromOffset(35,12),TextSize=8,Font=Enum.Font.GothamBold,TextColor3=Color3.fromRGB(146,242,211),BackgroundColor3=Color3.fromRGB(45,107,89),BackgroundTransparency=.28,Visible=false,ZIndex=4}); rounded(screen.friendBadge,4)
     screen.healthPill=create("Frame",screen.infoCard,{BackgroundTransparency=.8,BorderSizePixel=0,ZIndex=2,Visible=false}); rounded(screen.healthPill,5)
     screen.identityAccent=create("Frame",screen.infoCard,{Position=UDim2.fromOffset(6,7),Size=UDim2.fromOffset(2,9),BackgroundTransparency=.15,BorderSizePixel=0,ZIndex=3}); rounded(screen.identityAccent,2)
     screen.cardHalo=create("Frame",screen.container,{BackgroundTransparency=1,BorderSizePixel=0,ZIndex=1,Visible=false}); rounded(screen.cardHalo,10)
@@ -4819,6 +4888,7 @@ renderLabels=function(screen,candidate,low,high,camera,color)
             for _,label in ipairs({screen.nameLabel,screen.healthLabel,screen.distanceLabel}) do label.Parent=screen.container; label.TextStrokeTransparency=.35; label.Font=Enum.Font.Gotham; label.TextXAlignment=Enum.TextXAlignment.Center end
         end
         classicLabels(screen,candidate,low,high,camera,color)
+        if isFriend(candidate.owner) and screen.nameLabel.Visible then screen.nameLabel.Text="ALLY · "..screen.nameLabel.Text end
         return
     end
     ensureCard(screen)
@@ -4832,11 +4902,12 @@ renderLabels=function(screen,candidate,low,high,camera,color)
         screen.metaAt=now
         screen.metaDistance=math.round((candidate.root.Position-camera.CFrame.Position).Magnitude)
     end
-    local name=settings.names and ((candidate.owner and candidate.owner.Name or candidate.model.Name)..(isFriend(candidate.owner) and " · ALLY" or "")) or ""
+    local allied=isFriend(candidate.owner)
+    local name=settings.names and (candidate.owner and candidate.owner.Name or candidate.model.Name) or allied and "ALLY" or ""
     local hp=settings.health and string.format("%d HP",math.ceil(candidate.humanoid.Health)) or ""
     local distance=settings.distance and tostring(screen.metaDistance).." st" or ""
     local meta=hp..(hp~="" and distance~="" and "     " or "")..distance
-    local value=name..(name~="" and meta~="" and "\n" or "")..meta
+    local value=(allied and settings.names and name.."     ALLY" or name)..(name~="" and meta~="" and "\n" or "")..meta
     local shift,rectangle,width,height=placeLabel(screen.layoutLabel,value,center,low.Y-8,size,.5,1,camera,palette.text,true,8)
     screen.layoutLabel.Visible=false
     screen.infoCard.Visible=rectangle~=nil
@@ -4844,6 +4915,7 @@ renderLabels=function(screen,candidate,low,high,camera,color)
     screen.nameLabel.Visible=name~=""
     screen.healthLabel.Visible=hp~=""
     screen.distanceLabel.Visible=distance~=""
+    screen.friendBadge.Visible=rectangle~=nil and allied and settings.names
     if rectangle then
         screen.infoCard.Position=UDim2.fromOffset(math.round(rectangle.left),math.round(rectangle.top))
         screen.infoCard.Size=UDim2.fromOffset(width,height)
@@ -4855,9 +4927,10 @@ renderLabels=function(screen,candidate,low,high,camera,color)
         screen.infoRim.Color=isFriend(candidate.owner) and Color3.fromRGB(135,225,181) or color:Lerp(Color3.fromRGB(187,206,214),.5)
         screen.nameLabel.Position=UDim2.fromOffset(14,3)
         screen.nameLabel.Size=UDim2.new(1,-22,0,size+4)
+        if allied and settings.names then screen.nameLabel.Size=UDim2.new(1,-58,0,size+4) end
         screen.nameLabel.Text,screen.nameLabel.TextSize=name,size
         screen.nameLabel.Font=Enum.Font.GothamBold
-        screen.nameLabel.TextColor3=Color3.fromRGB(237,243,246)
+        screen.nameLabel.TextColor3=allied and Color3.fromRGB(146,242,211) or Color3.fromRGB(237,243,246)
         screen.nameLabel.TextXAlignment=Enum.TextXAlignment.Left; screen.nameLabel.TextTruncate=Enum.TextTruncate.AtEnd
         local y=name~="" and size+7 or 4
         local two=hp~="" and distance~=""
@@ -5277,7 +5350,7 @@ local function initializeWinter()
             rounded(halo, 1000); table.insert(halos, halo)
         end
         local body = create("Frame", host, { Name = "GlassBody", Size = UDim2.fromScale(1, 1),
-            BackgroundColor3 = palette.accent, BackgroundTransparency = 0.84, BorderSizePixel = 0, ZIndex = 0 })
+            BackgroundColor3 = palette.accent, BackgroundTransparency = 0.93, BorderSizePixel = 0, ZIndex = 0 })
         rounded(body, 1000)
         local depth = create("UIGradient", body, { Rotation = 125,
             Color = ColorSequence.new(Color3.fromRGB(185, 208, 235), Color3.fromRGB(12, 17, 27)),
@@ -5288,7 +5361,7 @@ local function initializeWinter()
             Color = ColorSequence.new(Color3.fromRGB(255, 255, 255), Color3.fromRGB(100, 140, 185)),
             Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.1), NumberSequenceKeypoint.new(0.25, 0.82), NumberSequenceKeypoint.new(0.65, 0.98), NumberSequenceKeypoint.new(1, 0.38) }) })
         local reflection = create("Frame", host, { Name = "SoftReflection", Position = UDim2.fromScale(0.17, 0.13),
-            Size = UDim2.fromScale(0.42, 0.15), Rotation = -28,
+            Size = UDim2.fromScale(0.30, 0.018), Rotation = -28,
             BackgroundColor3 = Color3.fromRGB(235, 247, 255), BackgroundTransparency = 0.79, BorderSizePixel = 0, ZIndex = 0 })
         rounded(reflection, 1000)
         create("UIGradient", reflection, { Rotation = 90,
@@ -6543,7 +6616,7 @@ RunService:BindToRenderStep(renderName, Enum.RenderPriority.Last.Value + 1, func
         end
     end
 
-    menu.BackgroundTransparency = math.min(settings.glass, 12) / 100
+    menu.BackgroundTransparency = math.min(settings.glass, 4) / 100
     if not menu.Visible then
         bindDialog.Visible = false
         controlRows.bindShield.Visible=false; controlRows.bindGesture.action=nil
