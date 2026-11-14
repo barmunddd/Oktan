@@ -2727,8 +2727,8 @@ local function initializeCommandDock()
     island:FindFirstChildOfClass("UICorner").CornerRadius=UDim.new(0,14)
     island:FindFirstChildOfClass("UIStroke").Transparency=.78
     islandHeader.Size=UDim2.new(1,0,0,60)
-    islandBrand.Position=UDim2.fromOffset(54,10); islandBrand.Size=UDim2.fromOffset(96,23); islandBrand.TextSize=16; islandBrand.Font=Enum.Font.BuilderSansBold
-    text(islandHeader,"COMMAND DOCK",{Name="DockBrandCaption",Position=UDim2.fromOffset(54,35),Size=UDim2.fromOffset(96,13),TextSize=9,Font=Enum.Font.BuilderSansMedium,TextColor3=Color3.fromRGB(182,190,211),TextXAlignment=Enum.TextXAlignment.Left})
+    islandBrand.Position=UDim2.fromOffset(46,10); islandBrand.Size=UDim2.fromOffset(104,23); islandBrand.TextSize=16; islandBrand.Font=Enum.Font.BuilderSansBold
+    text(islandHeader,"COMMAND DOCK",{Name="DockBrandCaption",Position=UDim2.fromOffset(46,35),Size=UDim2.fromOffset(104,13),TextSize=9,Font=Enum.Font.BuilderSansMedium,TextColor3=Color3.fromRGB(182,190,211),TextXAlignment=Enum.TextXAlignment.Left})
     local mark=islandHeader:FindFirstChild("IslandMark"); if mark then mark.Position=UDim2.fromOffset(18,23); mark.Size=UDim2.fromOffset(14,14) end
     islandClock.Position=UDim2.fromOffset(172,28); islandClock.Size=UDim2.fromOffset(98,22); islandClock.TextSize=16; islandClock.Font=Enum.Font.RobotoMono; islandClock.TextXAlignment=Enum.TextXAlignment.Left
     islandKills.Position=UDim2.fromOffset(288,28); islandKills.Size=UDim2.fromOffset(108,22); islandKills.TextSize=14; islandKills.Font=Enum.Font.BuilderSansMedium; islandKills.TextXAlignment=Enum.TextXAlignment.Left
@@ -2813,7 +2813,12 @@ for _,host in ipairs({menu:FindFirstChild("StudioEmblem"),islandHeader:FindFirst
     end
 end
 local menuMark=menu:FindFirstChild("StudioEmblem"); if menuMark then menuMark.Position=UDim2.fromOffset(28,22) end
-local dockMark=islandHeader:FindFirstChild("IslandMark"); if dockMark then dockMark.Position=UDim2.fromOffset(14,20) end
+local dockMark=islandHeader:FindFirstChild("IslandMark")
+if dockMark then
+    dockMark.Position=UDim2.fromOffset(12,20); dockMark.Size=UDim2.fromOffset(20,20)
+    local edge=dockMark:FindFirstChildOfClass("UIStroke"); edge.Thickness=1; edge.Transparency=.3
+    local core=dockMark:FindFirstChild("BrandCore"); core.Position=UDim2.fromOffset(4,4); core.Size=UDim2.new(1,-8,1,-8)
+end
 title.Font=Enum.Font.BuilderSansExtraBold
 title.Position=UDim2.fromOffset(72,15); title.Size=UDim2.fromOffset(99,32)
 for _,child in ipairs(menu:GetChildren()) do
@@ -5038,7 +5043,9 @@ local function ensureCard(screen)
     rounded(screen.infoCard,8)
     screen.friendBadge=text(screen.infoCard,"ALLY",{Name="FriendBadge",Position=UDim2.new(1,-41,0,4),Size=UDim2.fromOffset(35,12),TextSize=8,Font=Enum.Font.GothamBold,TextColor3=Color3.fromRGB(146,242,211),BackgroundColor3=Color3.fromRGB(45,107,89),BackgroundTransparency=.28,Visible=false,ZIndex=4}); rounded(screen.friendBadge,4)
     screen.healthPill=create("Frame",screen.infoCard,{BackgroundTransparency=.8,BorderSizePixel=0,ZIndex=2,Visible=false}); rounded(screen.healthPill,5)
-    screen.identityAccent=create("Frame",screen.infoCard,{Position=UDim2.fromOffset(6,7),Size=UDim2.fromOffset(2,9),BackgroundTransparency=.15,BorderSizePixel=0,ZIndex=3}); rounded(screen.identityAccent,2)
+    screen.identityAccent=create("Frame",screen.infoCard,{Name="IdentityGem",Size=UDim2.fromOffset(5,5),Rotation=45,BackgroundTransparency=.05,BorderSizePixel=0,ZIndex=3}); rounded(screen.identityAccent,1)
+    create("UIGradient",screen.identityAccent,{Rotation=90,Color=ColorSequence.new(Color3.fromRGB(255,255,255),Color3.fromRGB(126,137,177))})
+    local facet=create("Frame",screen.identityAccent,{Name="GemFacet",Position=UDim2.fromOffset(1,1),Size=UDim2.fromOffset(2,2),BackgroundColor3=Color3.fromRGB(255,255,255),BackgroundTransparency=.2,BorderSizePixel=0,ZIndex=4}); rounded(facet,1)
     screen.cardHalo=create("Frame",screen.container,{BackgroundTransparency=1,BorderSizePixel=0,ZIndex=1,Visible=false}); rounded(screen.cardHalo,10)
     screen.haloEdge=stroke(screen.cardHalo,palette.accent,2); screen.haloEdge.Transparency=.88
     screen.infoRim=stroke(screen.infoCard,Color3.fromRGB(175,193,202)); screen.infoRim.Transparency=.7
@@ -5047,6 +5054,7 @@ local function ensureCard(screen)
     screen.hpTrack=create("Frame",screen.infoCard,{Position=UDim2.new(0,6,1,-3),Size=UDim2.new(1,-12,0,2),BackgroundColor3=Color3.fromRGB(39,46,57),BorderSizePixel=0,ZIndex=3})
     rounded(screen.hpTrack,2)
     screen.hpFill=create("Frame",screen.hpTrack,{Size=UDim2.fromScale(1,1),BackgroundColor3=Color3.fromRGB(140,225,180),BorderSizePixel=0,ZIndex=3}); rounded(screen.hpFill,2)
+    create("UIGradient",screen.hpFill,{Rotation=0,Color=ColorSequence.new(Color3.fromRGB(174,191,183),Color3.fromRGB(255,255,255))})
     screen.weaponChip=create("Frame",screen.container,{Name="EspWeaponChip",BackgroundColor3=Color3.fromRGB(15,18,24),BackgroundTransparency=.22,BorderSizePixel=0,ZIndex=2,Visible=false})
     rounded(screen.weaponChip,8); screen.weaponRim=stroke(screen.weaponChip,Color3.fromRGB(175,193,202)); screen.weaponRim.Transparency=.82
     screen.weaponLabel.ZIndex=3
@@ -5095,8 +5103,8 @@ renderLabels=function(screen,candidate,low,high,camera,color)
         screen.infoCard.Position=UDim2.fromOffset(math.round(rectangle.left),math.round(rectangle.top))
         screen.infoCard:FindFirstChildOfClass("UICorner").CornerRadius=UDim.new(0,prism and 5 or 8)
         screen.infoCard.BackgroundColor3=prism and Color3.fromRGB(21,22,39) or Color3.fromRGB(15,18,24)
-        screen.identityAccent.Size=prism and UDim2.new(0,2,1,-12) or UDim2.fromOffset(2,9)
-        screen.identityAccent.Position=UDim2.fromOffset(6,6)
+        screen.identityAccent.Size=UDim2.fromOffset(5,5)
+        screen.identityAccent.Position=UDim2.fromOffset(5,math.round(3+size*.5))
         screen.hpTrack.Size=UDim2.new(1,-12,0,prism and 3 or 2)
         screen.weaponChip.BackgroundColor3=prism and Color3.fromRGB(29,27,48) or Color3.fromRGB(15,18,24)
         screen.weaponRim.Color=prism and color:Lerp(Color3.fromRGB(216,206,255),.65) or Color3.fromRGB(175,193,202)
