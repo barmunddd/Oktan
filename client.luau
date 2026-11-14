@@ -23,6 +23,9 @@ end
 
 -- Every exposed setting has its own description, bounds and keyboard actions.
 local definitions = {
+    { "nearbyAlert", true, "Nearby Alert", "Одно предупреждение о ближайших игроках. Друзья и игроки твоей команды исключены. Требуется ESP; использует доступные модели.", "ESP" },
+    { "nearbyRange", 30, "Nearby Radius (m)", "Радиус предупреждения в метрах. Количество игроков и расстояние до ближайшего обновляются без отдельных уведомлений на каждого.", "ESP", 5, 100 },
+    { "espTheme", true, "Match Menu Theme", "ESP, чамсы и скелет берут акцент меню. Выбор собственного цвета ESP отключает эту привязку.", "ESP" },
     { "combatHudScale", 100, "HUD Scale", "Размер Combat HUD в процентах. Автоматически ограничивается размером экрана.", "Настройки", 75, 135 },
     { "combatHudPosition", 1, "HUD Position", "Положение Combat HUD: по центру, слева или справа. Камера и прицел не меняются.", "Настройки", 1, 3 },
     { "combatHudHeight", 160, "HUD Height", "Расстояние Combat HUD от нижнего края экрана. Увеличь, если он перекрывает игровой интерфейс.", "Настройки", 100, 360 },
@@ -508,12 +511,22 @@ for index, name in ipairs({ "Наведение", "ESP", "Мир", "Камера
 end
 local espRows = {}
 local controlRows, roleRows, sliderFills = {}, {}, {}
+controlRows.espPalette={
+    color=function()
+        return settings.espTheme and palette.accent or Color3.fromHSV(settings.espHue/360,settings.espSaturation/100,settings.espValue/100)
+    end,
+    ally=function(color)
+        return settings.espTheme and color:Lerp(Color3.fromRGB(235,230,255),.2) or Color3.fromRGB(85,235,150)
+    end,
+}
+
 local refreshers = {}
 local function refreshAll()
     for _, refresh in ipairs(refreshers) do refresh() end
 end
 local function setValue(key, value)
     settings[key] = value
+    if key=="espHue" or key=="espSaturation" or key=="espValue" then settings.espTheme=false end
     changed()
     refreshAll()
 end
@@ -656,6 +669,7 @@ for index, definition in ipairs(definitions) do
     else
         local minimum, maximum = definition[6], definition[7]
         local valueText = text(frame, "", { Position = UDim2.new(1, -63, 0, 10), Size = UDim2.fromOffset(48, 27) })
+        if key=="range" then controlRows.espRangeStatus=text(frame,"Доступность моделей…",{Name="EspRangeStatus",Position=UDim2.fromOffset(16,40),Size=UDim2.new(1,-32,0,13),TextSize=10,TextColor3=palette.muted,TextXAlignment=Enum.TextXAlignment.Left}) end
         local track = button(frame, "", UDim2.new(0, 16, 0, 57), UDim2.new(1, -32, 0, 12))
         track.AutoButtonColor = false
         local fill = create("Frame", track, {
@@ -2061,10 +2075,12 @@ local function updateIslandRows()
         local entry = islandRows[index]
         if not entry then
             local frame = create("Frame", islandList, {
-                BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 26), LayoutOrder = index,
+                BackgroundColor3=Color3.fromRGB(24,28,41), BackgroundTransparency = .12, Size = UDim2.new(1, 0, 0, 34), LayoutOrder = index,
             })
-            local name = text(frame, "", { Size = UDim2.new(1, -108, 1, 0), TextXAlignment = Enum.TextXAlignment.Left, TextSize = 12 })
-            local key = text(frame, "", { Position = UDim2.new(1, -108, 0, 0), Size = UDim2.fromOffset(82, 26), TextSize = 11 })
+            rounded(frame,7)
+            local name = text(frame, "", { Position=UDim2.fromOffset(10,0), Size = UDim2.new(1, -144, 1, 0), TextXAlignment = Enum.TextXAlignment.Left, TextSize = 13, Font=Enum.Font.BuilderSansMedium, TextTruncate=Enum.TextTruncate.AtEnd })
+            local key = text(frame, "", { Name="DockKeycap", Position = UDim2.new(1, -126, 0, 5), Size = UDim2.fromOffset(108, 24), TextSize = 11, Font=Enum.Font.RobotoMono, BackgroundColor3=Color3.fromRGB(43,47,65), BackgroundTransparency=.06 })
+            rounded(key,6); stroke(key,palette.accent).Transparency=.84
             local dot = create("Frame", frame, {
                 Position = UDim2.new(1, -12, 0.5, -3), Size = UDim2.fromOffset(6, 6), BorderSizePixel = 0,
             })
@@ -2075,9 +2091,11 @@ local function updateIslandRows()
         entry.frame.Visible = true
         entry.name.Text = islandLabels[action] or action
         entry.key.Text = bindings[action]
+        entry.key.TextColor3=palette.text
         local on = settings[action] == true
         if action == "aim" or action == "zoom" then on = held(action) end
-        entry.dot.BackgroundColor3 = on and Color3.fromRGB(56, 200, 125) or Color3.fromRGB(100, 100, 110)
+        entry.dot.BackgroundColor3 = on and palette.accent or Color3.fromRGB(100,100,110)
+        entry.key.TextColor3=on and palette.accent or palette.text
     end
     for index = #actions + 1, #islandRows do islandRows[index].frame.Visible = false end
     updateIslandHeader()
@@ -2643,7 +2661,7 @@ local function initializeHudMotion()
         text(tile,label,{Position=UDim2.fromOffset(10,8),Size=UDim2.new(1,-20,0,12),TextSize=8,TextColor3=palette.muted,TextXAlignment=Enum.TextXAlignment.Left})
         values[i]=text(tile,"—",{Position=UDim2.fromOffset(10,26),Size=UDim2.new(1,-20,0,26),TextSize=20,Font=Enum.Font.GothamBold,TextColor3=palette.text,TextXAlignment=Enum.TextXAlignment.Left})
     end
-    text(islandList,"SHORTCUTS",{Name="IslandShortcutsTitle",LayoutOrder=-1,Size=UDim2.new(1,0,0,24),TextSize=9,TextColor3=palette.muted,TextXAlignment=Enum.TextXAlignment.Left})
+    text(islandList,"БИНДЫ",{Name="IslandShortcutsTitle",LayoutOrder=-1,Size=UDim2.new(1,0,0,28),Font=Enum.Font.BuilderSansBold,TextSize=11,TextColor3=Color3.fromRGB(182,190,211),TextXAlignment=Enum.TextXAlignment.Left})
     api.clear=function()
         for _,tween in ipairs(api.tweens) do tween:Cancel() end
         table.clear(api.tweens)
@@ -2709,13 +2727,13 @@ local function initializeCommandDock()
     island:FindFirstChildOfClass("UICorner").CornerRadius=UDim.new(0,14)
     island:FindFirstChildOfClass("UIStroke").Transparency=.78
     islandHeader.Size=UDim2.new(1,0,0,60)
-    islandBrand.Position=UDim2.fromOffset(44,12); islandBrand.Size=UDim2.fromOffset(106,20); islandBrand.TextSize=14
-    text(islandHeader,"COMMAND DOCK",{Position=UDim2.fromOffset(44,33),Size=UDim2.fromOffset(112,12),TextSize=8,TextColor3=palette.muted,TextXAlignment=Enum.TextXAlignment.Left})
+    islandBrand.Position=UDim2.fromOffset(44,10); islandBrand.Size=UDim2.fromOffset(106,23); islandBrand.TextSize=16; islandBrand.Font=Enum.Font.BuilderSansBold
+    text(islandHeader,"COMMAND DOCK",{Position=UDim2.fromOffset(44,35),Size=UDim2.fromOffset(112,13),TextSize=9,Font=Enum.Font.BuilderSansMedium,TextColor3=Color3.fromRGB(182,190,211),TextXAlignment=Enum.TextXAlignment.Left})
     local mark=islandHeader:FindFirstChild("IslandMark"); if mark then mark.Position=UDim2.fromOffset(18,23); mark.Size=UDim2.fromOffset(14,14) end
-    islandClock.Position=UDim2.fromOffset(172,26); islandClock.Size=UDim2.fromOffset(92,20); islandClock.TextSize=15; islandClock.TextXAlignment=Enum.TextXAlignment.Left
-    islandKills.Position=UDim2.fromOffset(288,26); islandKills.Size=UDim2.fromOffset(108,20); islandKills.TextSize=12; islandKills.TextXAlignment=Enum.TextXAlignment.Left
+    islandClock.Position=UDim2.fromOffset(172,28); islandClock.Size=UDim2.fromOffset(98,22); islandClock.TextSize=16; islandClock.Font=Enum.Font.RobotoMono; islandClock.TextXAlignment=Enum.TextXAlignment.Left
+    islandKills.Position=UDim2.fromOffset(288,28); islandKills.Size=UDim2.fromOffset(108,22); islandKills.TextSize=14; islandKills.Font=Enum.Font.BuilderSansMedium; islandKills.TextXAlignment=Enum.TextXAlignment.Left
     for _,entry in ipairs({{172,"LOCAL TIME"},{288,"RAID / SESSION"}}) do
-        text(islandHeader,entry[2],{Position=UDim2.fromOffset(entry[1],12),Size=UDim2.fromOffset(108,10),TextSize=7,TextColor3=palette.muted,TextXAlignment=Enum.TextXAlignment.Left})
+        text(islandHeader,entry[2],{Position=UDim2.fromOffset(entry[1],12),Size=UDim2.fromOffset(108,12),TextSize=9,Font=Enum.Font.BuilderSansBold,TextColor3=Color3.fromRGB(182,190,211),TextXAlignment=Enum.TextXAlignment.Left})
     end
     islandChevron.Position=UDim2.new(1,-32,0,17); islandChevron.Size=UDim2.fromOffset(20,26); islandChevron.TextSize=18
     for _,x in ipairs({155,274}) do create("Frame",islandHeader,{Position=UDim2.fromOffset(x,18),Size=UDim2.fromOffset(1,26),BackgroundColor3=palette.muted,BackgroundTransparency=.84,BorderSizePixel=0}) end
@@ -2724,9 +2742,15 @@ local function initializeCommandDock()
     rounded(event,7)
     local eventText=text(event,"",{Position=UDim2.fromOffset(9,0),Size=UDim2.new(1,-18,1,0),TextSize=10,TextColor3=palette.text,TextXAlignment=Enum.TextXAlignment.Left,TextTruncate=Enum.TextTruncate.AtEnd})
     local context=text(islandList,"SESSION / SHORTCUTS",{Name="DockContext",Size=UDim2.new(1,0,0,22),LayoutOrder=-30,TextSize=9,TextColor3=palette.muted,TextXAlignment=Enum.TextXAlignment.Left})
+    local subscription=create("Frame",islandList,{Name="DockSubscription",Size=UDim2.new(1,0,0,64),LayoutOrder=-25,BackgroundColor3=Color3.fromRGB(30,34,49),BackgroundTransparency=.05,BorderSizePixel=0})
+    rounded(subscription,10); stroke(subscription,palette.accent).Transparency=.78
+    text(subscription,"ПОДПИСКА",{Position=UDim2.fromOffset(12,8),Size=UDim2.fromOffset(160,15),Font=Enum.Font.BuilderSansBold,TextSize=10,TextColor3=Color3.fromRGB(182,190,211),TextXAlignment=Enum.TextXAlignment.Left})
+    local leaseText=text(subscription,"Проверка срока…",{Name="DockSubscriptionTime",Position=UDim2.fromOffset(12,28),Size=UDim2.new(1,-104,0,26),Font=Enum.Font.BuilderSansBold,TextSize=18,TextXAlignment=Enum.TextXAlignment.Left})
+    local leaseState=text(subscription,"ACTIVE",{Position=UDim2.new(1,-80,0,22),Size=UDim2.fromOffset(68,22),Font=Enum.Font.BuilderSansBold,TextSize=10,BackgroundColor3=palette.control,BackgroundTransparency=.1,TextColor3=palette.accent}); rounded(leaseState,6)
     local previousEvent
     api.step=function(dt)
         local music=controlRows.musicIsland.root.Visible
+        island.BackgroundTransparency=islandExpanded and 0 or .03
         local recent=settings._lastSquadEvent
         local showEvent=settings.teamToasts and recent and os.clock()-recent.at<5
         local y=music and 120 or 64
@@ -2746,7 +2770,13 @@ local function initializeCommandDock()
         if api.elapsed<.2 then return end
         api.elapsed=0
         local session=settings._subscription
-        context.Text=session and "SESSION VERIFIED  /  SHORTCUTS" or "LOCAL SESSION  /  SHORTCUTS"
+        context.Text="СЕАНС И УПРАВЛЕНИЕ"; context.TextSize=11; context.Font=Enum.Font.BuilderSansBold; context.TextColor3=Color3.fromRGB(182,190,211)
+        local info=settings._subscriptionInfo
+        local seconds=info and info.remaining
+        if type(seconds)=="number" then
+            leaseText.Text=string.format("%d д  %02d:%02d:%02d",math.floor(seconds/86400),math.floor(seconds/3600)%24,math.floor(seconds/60)%60,seconds%60)
+        else leaseText.Text=session and "Срок уточняется" or "Локальный запуск" end
+        leaseState.Text=session and "ACTIVE" or "LOCAL"; leaseState.TextColor3=palette.accent
         islandBrand.TextColor3=palette.accent
     end
     api.size=function() return UDim2.fromOffset(api.width,islandExpanded and math.max(380,api.height+180) or api.height) end
@@ -2754,6 +2784,26 @@ local function initializeCommandDock()
 end
 controlRows.dock=initializeCommandDock()
 end
+do
+local cores={}
+for _,host in ipairs({menu:FindFirstChild("StudioEmblem"),islandHeader:FindFirstChild("IslandMark")}) do
+    if host then
+        host.Size=UDim2.fromOffset(24,24)
+        host.BackgroundColor3=palette.accent; host.BackgroundTransparency=.08
+        local edge=host:FindFirstChildOfClass("UIStroke"); if edge then edge.Thickness=1.5; edge.Transparency=.1 end
+        local corner=host:FindFirstChildOfClass("UICorner"); if corner then corner.CornerRadius=UDim.new(0,7) else rounded(host,7) end
+        local inset=create("Frame",host,{Name="BrandCore",Position=UDim2.fromOffset(5,5),Size=UDim2.new(1,-10,1,-10),BackgroundColor3=Color3.fromRGB(24,26,42),BorderSizePixel=0}); rounded(inset,4)
+        local shine=create("Frame",host,{Position=UDim2.fromOffset(3,2),Size=UDim2.new(1,-6,0,2),BackgroundColor3=Color3.fromRGB(255,255,255),BackgroundTransparency=.35,BorderSizePixel=0}); rounded(shine,2)
+        local depth=create("Frame",host,{Position=UDim2.new(0,3,1,-4),Size=UDim2.new(1,-6,0,2),BackgroundColor3=Color3.fromRGB(34,26,65),BackgroundTransparency=.15,BorderSizePixel=0}); rounded(depth,2)
+        table.insert(cores,host)
+    end
+end
+local menuMark=menu:FindFirstChild("StudioEmblem"); if menuMark then menuMark.Position=UDim2.fromOffset(28,22) end
+local dockMark=islandHeader:FindFirstChild("IslandMark"); if dockMark then dockMark.Position=UDim2.fromOffset(14,20) end
+title.Font=Enum.Font.BuilderSansExtraBold
+controlRows.brand={theme=function(accent) for _,host in ipairs(cores) do host.BackgroundColor3=accent end end}
+end
+
 
 controlRows.hudTiming={inventory=1,hud=1}
 local function updateHud(dt)
@@ -2761,6 +2811,7 @@ local function updateHud(dt)
     controlRows.inventoryArt.step(dt)
     controlRows.hudMotion.step(dt)
     controlRows.dock.step(dt)
+    controlRows.nearby.step(dt)
     controlRows.release.step(dt)
     controlRows.profiles.uiStep()
     controlRows.inspectorMotion.step(dt)
@@ -2781,9 +2832,9 @@ local function updateHud(dt)
     if controlRows.hudTiming.hud >= 0.2 then
     controlRows.hudTiming.hud = 0
     local sections = {}
-    if settings._subscriptionSummary then table.insert(sections, settings._subscriptionSummary) end
+    
     if settings._musicStatus and settings._musicStatus.playing then table.insert(sections, "Music: " .. settings._musicStatus.title:sub(1, 42)) end
-    if raid.kills ~= nil then table.insert(sections, (raid.session and "Session kills: " or "Raid kills: ") .. tostring(raid.kills)) end
+    
     if raid.extracted ~= nil then
         table.insert(sections, "Extracted")
         table.insert(sections, #raid.extracted > 0 and table.concat(raid.extracted, "\n") or "No items")
@@ -2828,7 +2879,7 @@ local treeGroups = {
     ["Бинды"] = { "Инвентарь", "Command Dock", "Управление", "Назначения функций" },
     ["Настройки"] = { "Оформление", "Клиент", "Music", "Performance", "Combat" },
 }
-local settingGroup = { combatHudScale="Combat", combatHudPosition="Combat", combatHudHeight="Combat", chamsStyle="Chams", skeletonStyle="Skeleton", combatHud="Combat", fightFocus="Combat", teamToasts="Combat", mapPlayers="Map", mapNames="Map", mapFriendsOnly="Map", mapTextSize="Map", containerReach="Инвентарь", containerEsp="Loot", auroraEsp="Loot", espStyle = "Цвет и оформление", skinTextures = "Оформление", islandMusic = "Command Dock", adaptiveEsp = "Performance", lowFx = "Performance", perfDebug = "Performance", yandexPlay = "Music", spotifyPlay = "Music", musicPlay = "Music", musicVolume = "Music", musicRepeat = "Music", musicIndex = "Music", noRecoil = "Weapon Tuning", aimEase = "Область и плавность", aimFilter = "Область и плавность", graphics = "Visual Studio", gfxTier = "Visual Studio", gfxLook = "Visual Studio", echo = "Оформление", echoDelay = "Оформление", echoFreeze = "Оформление", motion = "Оформление", killFx = "Оформление", crossStyle = "Прицел", crossWidth = "Прицел", noLeaves = "Vegetation", noGrass = "Vegetation", corpseEsp = "Loot", itemEsp = "Loot", lootThrough = "Loot", lootRange = "Loot", lootTextSize = "Loot",
+local settingGroup = { nearbyAlert="Общее", nearbyRange="Общее", espTheme="Цвет и оформление", combatHudScale="Combat", combatHudPosition="Combat", combatHudHeight="Combat", chamsStyle="Chams", skeletonStyle="Skeleton", combatHud="Combat", fightFocus="Combat", teamToasts="Combat", mapPlayers="Map", mapNames="Map", mapFriendsOnly="Map", mapTextSize="Map", containerReach="Инвентарь", containerEsp="Loot", auroraEsp="Loot", espStyle = "Цвет и оформление", skinTextures = "Оформление", islandMusic = "Command Dock", adaptiveEsp = "Performance", lowFx = "Performance", perfDebug = "Performance", yandexPlay = "Music", spotifyPlay = "Music", musicPlay = "Music", musicVolume = "Music", musicRepeat = "Music", musicIndex = "Music", noRecoil = "Weapon Tuning", aimEase = "Область и плавность", aimFilter = "Область и плавность", graphics = "Visual Studio", gfxTier = "Visual Studio", gfxLook = "Visual Studio", echo = "Оформление", echoDelay = "Оформление", echoFreeze = "Оформление", motion = "Оформление", killFx = "Оформление", crossStyle = "Прицел", crossWidth = "Прицел", noLeaves = "Vegetation", noGrass = "Vegetation", corpseEsp = "Loot", itemEsp = "Loot", lootThrough = "Loot", lootRange = "Loot", lootTextSize = "Loot",
     noVisor = "Vision", cameraFov = "Vision", cameraFovValue = "Vision",
     viewmodel = "Viewmodel", vmX = "Viewmodel", vmY = "Viewmodel", vmZ = "Viewmodel", sticky = "Наведение", noFog = "Освещение", bubbles = "Оформление", snow = "Оформление", snowDrifts = "Оформление", friendHats = "Оформление", espFps = "Цвет и оформление", adaptiveText = "Подписи",
     aim = "Наведение", aimPlayers = "Цели и проверки", aimDummies = "Цели и проверки",
@@ -3614,7 +3665,7 @@ renderGraph = function()
                 local prefix = entry.key:gsub("Hue$", "")
                 local panel = create("Frame", detailBody, { Size = UDim2.new(1, -20, 0, 410), BackgroundTransparency = 1, LayoutOrder = 1 })
                 table.insert(temporaryRows, panel)
-                local initial = Color3.fromHSV(settings[entry.key] / 360, settings[prefix .. "Saturation"] / 100, settings[prefix .. "Value"] / 100)
+                local initial = entry.key=="espHue" and settings.espTheme and palette.accent or Color3.fromHSV(settings[entry.key] / 360, settings[prefix .. "Saturation"] / 100, settings[prefix .. "Value"] / 100)
                 local before = create("Frame", panel, { Position = UDim2.fromOffset(8, 28), Size = UDim2.fromOffset(110, 36), BackgroundColor3 = initial })
                 local after = create("Frame", panel, { Position = UDim2.fromOffset(132, 28), Size = UDim2.fromOffset(110, 36), BackgroundColor3 = initial })
                 rounded(before, 8); rounded(after, 8)
@@ -3735,6 +3786,7 @@ local function applyTheme()
         if object:IsA("ScrollingFrame") then object.ScrollBarImageColor3 = accent end
     end
     controlRows.studio.theme(accent)
+    controlRows.brand.theme(accent)
     for _, fill in ipairs(sliderFills) do fill.BackgroundColor3 = accent end
     refreshAll()
 end
@@ -5273,6 +5325,70 @@ local function refreshCandidates()
     end
 end
 
+do
+local function initializeNearby()
+    local api={elapsed=1,shown=false,count=0}
+    local root=create("CanvasGroup",gui,{Name="NearbyAlert",Position=UDim2.new(0,18,.6,-34),Size=UDim2.fromOffset(262,68),BackgroundColor3=Color3.fromRGB(22,24,35),BackgroundTransparency=.04,BorderSizePixel=0,GroupTransparency=1,Visible=false,ZIndex=17})
+    rounded(root,12); stroke(root,Color3.fromRGB(235,184,151)).Transparency=.55
+    local fit=create("UIScale",root,{Scale=1})
+    text(root,"ИГРОКИ РЯДОМ",{Position=UDim2.fromOffset(12,8),Size=UDim2.fromOffset(178,16),Font=Enum.Font.BuilderSansBold,TextSize=11,TextColor3=Color3.fromRGB(241,194,164),TextXAlignment=Enum.TextXAlignment.Left})
+    local name=text(root,"",{Name="NearbyName",Position=UDim2.fromOffset(12,28),Size=UDim2.fromOffset(174,19),Font=Enum.Font.BuilderSansBold,TextSize=14,TextTruncate=Enum.TextTruncate.AtEnd,TextXAlignment=Enum.TextXAlignment.Left})
+    local count=text(root,"",{Name="NearbyCount",Position=UDim2.fromOffset(12,49),Size=UDim2.fromOffset(236,12),TextSize=10,Font=Enum.Font.BuilderSansMedium,TextColor3=Color3.fromRGB(182,190,211),TextXAlignment=Enum.TextXAlignment.Left})
+    local distance=text(root,"",{Name="NearbyDistance",Position=UDim2.fromOffset(192,24),Size=UDim2.fromOffset(58,26),TextSize=19,Font=Enum.Font.BuilderSansBold,TextColor3=Color3.fromRGB(255,220,195)})
+    local fade
+    local function visibility(shown)
+        if shown==api.shown then return end
+        api.shown=shown
+        if fade then fade:Cancel(); fade=nil end
+        if shown then root.Visible=true end
+        if settings.motion and not settings.lowFx then
+            fade=TweenService:Create(root,TweenInfo.new(.2,Enum.EasingStyle.Quart,Enum.EasingDirection.Out),{GroupTransparency=shown and 0 or 1}); fade:Play()
+        else root.GroupTransparency=shown and 0 or 1 end
+    end
+    api.step=function(dt)
+        if not api.shown and root.GroupTransparency>=.99 then root.Visible=false end
+        api.elapsed+=dt; if api.elapsed<.2 then return end; api.elapsed=0
+        local camera=workspace.CurrentCamera
+        local mine=player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+        if not settings.nearbyAlert or not settings.esp or menu.Visible or settings._mapOpen or not camera or not mine then api.count=0; visibility(false); return end
+        local closest,best,n=nil,math.huge,0
+        for _,candidate in ipairs(candidates) do
+            local owner=candidate.owner
+            local sameTeam=owner and player.Team~=nil and not player.Neutral and not owner.Neutral and owner.Team==player.Team
+            if owner and owner~=player and not isFriend(owner) and not sameTeam and candidate.root:IsDescendantOf(workspace) and candidate.humanoid.Health>0 then
+                local meters=(candidate.root.Position-mine.Position).Magnitude*.28
+                if meters<=settings.nearbyRange then n+=1; if meters<best then best,closest=meters,owner end end
+            end
+        end
+        api.count=n; visibility(n>0)
+        if n==0 then return end
+        fit.Scale=math.min(1,math.max(.5,(camera.ViewportSize.X-36)/262))
+        name.Text=closest.DisplayName or closest.Name
+        distance.Text=tostring(math.round(best)).." м"
+        count.Text=n==1 and "Ближайший игрок · не в друзьях" or "В радиусе: "..n.." · ещё "..(n-1).." рядом"
+    end
+    api.root=root
+    table.insert(cleanups,function() if fade then fade:Cancel() end; root:Destroy() end)
+    return api
+end
+controlRows.nearby=initializeNearby()
+controlRows.espCoverage={update=function()
+    local total,available,farthest=0,0,0
+    for _,other in ipairs(Players:GetPlayers()) do if other~=player then total+=1 end end
+    local camera=workspace.CurrentCamera
+    for _,candidate in ipairs(candidates) do
+        if candidate.owner and candidate.root:IsDescendantOf(workspace) then
+            available+=1
+            if camera then farthest=math.max(farthest,(candidate.root.Position-camera.CFrame.Position).Magnitude*.28) end
+        end
+    end
+    settings._espCoverage={available=available,total=total,farthest=math.round(farthest)}
+    if controlRows.espRangeStatus then
+        controlRows.espRangeStatus.Text=settings.esp and string.format("Модели: %d/%d  ·  дальняя: %d м",available,total,math.round(farthest)) or "Включи ESP для оценки доступных моделей"
+    end
+end}
+end
+
 local espRay = RaycastParams.new()
 espRay.FilterType = Enum.RaycastFilterType.Exclude
 espRay.IgnoreWater = true
@@ -5325,7 +5441,7 @@ local function renderScreenMarker(marker, camera, color)
     screen.container.Visible = enabled == true
     if not enabled then return end
     local model = candidate.model
-    if isFriend(candidate.owner) then color = Color3.fromRGB(85, 235, 150) end
+    if isFriend(candidate.owner) then color = controlRows.espPalette.ally(color) end
     local projected = camera:WorldToViewportPoint(candidate.root.Position)
     local viewport = camera.ViewportSize
     if projected.Z <= 0.1 then screen.container.Visible = false; return end
@@ -5421,7 +5537,7 @@ local function updateMarkers(camera)
     local seen = {}
     if settings.esp and camera then
         espRay.FilterDescendantsInstances = player.Character and { player.Character, camera } or { camera }
-        local baseColor = Color3.fromHSV(settings.espHue / 360, settings.espSaturation / 100, settings.espValue / 100)
+        local baseColor = controlRows.espPalette.color()
         for _, candidate in ipairs(candidates) do
             local owner = candidate.owner
             if (owner and settings.espPlayers) or (not owner and settings.espDummies) then
@@ -5447,7 +5563,7 @@ local function updateMarkers(camera)
                         camera.CFrame.Position, candidate.root.Position - camera.CFrame.Position, espRay)
                     marker.occluded = hit and not hit.Instance:IsDescendantOf(model) or false
                     local color = baseColor
-                    if isFriend(owner) then color = Color3.fromRGB(85, 235, 150) end
+                    if isFriend(owner) then color = controlRows.espPalette.ally(color) end
                     controlRows.espArt.highlight(marker,color)
                     marker.highlight.Enabled = not settings._mapOpen and not menu.Visible and settings.chams
                     marker.highlight.DepthMode = settings.through
@@ -6778,7 +6894,7 @@ local function initializeMapOverlay()
                             local name=text(dot,owner.Name,{Name="PlayerName",Position=UDim2.fromOffset(12,-7),Size=UDim2.fromOffset(160,22),TextXAlignment=Enum.TextXAlignment.Left,TextSize=11,TextStrokeColor3=Color3.fromRGB(6,12,16),TextStrokeTransparency=.2,Active=false,Selectable=false,ZIndex=17})
                             mark={dot=dot,name=name}; api.marks[owner]=mark
                         end
-                        local color=friend and Color3.fromRGB(125,239,190) or Color3.fromHSV(settings.espHue/360,settings.espSaturation/100,settings.espValue/100)
+                        local color=controlRows.espPalette.color(); if friend then color=controlRows.espPalette.ally(color) end
                         mark.dot.Position=UDim2.fromScale(u,v)
                         mark.dot.Visible=true
                         mark.dot.BackgroundColor3=color
@@ -6832,6 +6948,7 @@ RunService:BindToRenderStep(renderName, Enum.RenderPriority.Last.Value + 1, func
     if renderState.elapsed >= 0.2 then
         renderState.elapsed = 0
         refreshCandidates()
+        controlRows.espCoverage.update()
         updateMarkers(camera)
         updateLighting()
         local count = #candidates
@@ -6857,7 +6974,7 @@ RunService:BindToRenderStep(renderName, Enum.RenderPriority.Last.Value + 1, func
             math.clamp(mouse.X + 18, 0, math.max(0, viewport.X - 364)),
             math.clamp(mouse.Y + 20, 0, math.max(0, viewport.Y - tooltip.AbsoluteSize.Y - 4)))
     end
-    local color = Color3.fromHSV(settings.espHue / 360, settings.espSaturation / 100, settings.espValue / 100)
+    local color = controlRows.espPalette.color()
     renderState.visualElapsed += dt
     renderState.effectiveEspFps = settings.espFps
     if settings.adaptiveEsp then
