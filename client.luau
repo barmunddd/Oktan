@@ -38,7 +38,7 @@ local definitions = {
     { "containerReach", 250, "Container Reach", "Дальность Inspect для сундуков: 25–1500 studs. Наведи прицел на сундук; доступны только переданные клиенту предметы.", "Настройки", 25, 1500 },
     { "containerEsp", false, "Containers", "Метки доступных сундуков в папках Containers/Chests. Дальность — Loot Distance.", "ESP" },
     { "auroraEsp", false, "Aurora", "Отдельные метки сундуков с Aurora/Аврора в имени или DisplayName. Если имя модели другое, включи Containers.", "ESP" },
-    { "espStyle", 2, "ESP Style", "Classic — прежние подписи; Glass — компактные карточки, здоровье и оружие под ногами; Minimal — без подложек; Prism — геометричные карточки с боковым акцентом. Chams и линии мягче в Glass/Minimal.", "ESP", 1, 4 },
+    { "espStyle", 2, "ESP Style", "Classic — прежние подписи; Glass — компактные карточки, здоровье и оружие под ногами; Minimal — без подложек; Trace — свободные подписи без подложек, вертикальная шкала HP у силуэта; в толпе дальние подписи скрываются без смещения. Chams и линии мягче в Glass/Minimal.", "ESP", 1, 4 },
     { "skinTextures", true, "Atmosphere Detail", "Тонкая архитектурная сетка поверх слоёв света. Light Menu скрывает фон целиком.", "Настройки" },
     { "islandMusic", true, "Music Island", "Музыка в Dynamic Island: плавная смена трека, Pause/Stop и локальные строки LRC. В развёрнутом виде время, киллы и бинды сохраняются.", "Бинды" },
     { "adaptiveEsp", true, "Adaptive ESP", "При большом числе целей снижает частоту только ESP: до 30 обновлений/с после 16 целей и до 20 после 32. Игровой FPS не ограничивает; все цели остаются видимыми.", "Настройки" },
@@ -119,7 +119,7 @@ local definitions = {
     { "skeleton", false, "Skeleton", "Соединяет части тела по суставам Motor6D.", "ESP" },
     { "tracers", false, "Tracers", "Проводит линию от нижнего центра экрана до корневой части персонажа.", "ESP" },
     { "healthBar", false, "Health Bar", "Рисует слева от рамки шкалу текущего здоровья относительно максимального.", "ESP" },
-    { "range", 500, "Max Distance", "Радиус ESP в studs: до 6000 (1680 м). Подписи показаны в метрах.", "ESP", 25, 6000 },
+    { "range", 500, "Max Distance (m)", "Дальность ESP до 6000 метров. Значение ползунка и подписи — в метрах; старые конфиги сохраняют физическую дальность.", "ESP", 25, 21429 },
     { "espHue", 235, "ESP Hue", "Выбирает оттенок всех маркеров по цветовому кругу от 0 до 359 градусов.", "ESP", 0, 359 },
     { "espOpacity", 80, "Line Opacity", "Задаёт видимость рамок, скелета и трассеров.", "ESP", 10, 100 },
     { "fillOpacity", 18, "Fill Opacity", "Непрозрачность внутренней заливки подсветки.", "ESP", 0, 100 },
@@ -677,7 +677,7 @@ for index, definition in ipairs(definitions) do
         end)
         table.insert(refreshers, function()
             fill.Size = UDim2.fromScale((settings[key] - minimum) / (maximum - minimum), 1)
-            valueText.Text = tostring(settings[key])
+            valueText.Text = key=="range" and tostring(math.round(settings[key]*.28)).." м" or tostring(settings[key])
         end)
     end
 end
@@ -3595,7 +3595,7 @@ renderGraph = function()
                 local reset = button(panel, "Вернуть исходный", UDim2.fromOffset(8, 342), UDim2.fromOffset(200, 34))
                 reset.Activated:Connect(function() choose(initial) end)
             elseif entry.key == "combatHudPosition" or entry.key == "gfxTier" or entry.key == "gfxLook" or entry.key == "espStyle" or entry.key == "chamsStyle" or entry.key == "skeletonStyle" then
-                local names = entry.key == "combatHudPosition" and { "Center", "Left", "Right" } or entry.key == "chamsStyle" and { "Radiant", "Outline", "Classic", "Spectral" } or entry.key == "skeletonStyle" and { "Silk", "Jointed", "Classic", "Ribbon" } or entry.key == "espStyle" and { "Classic", "Glass", "Minimal", "Prism" } or entry.key == "gfxTier" and { "Low", "Balanced", "Ultra" } or { "Arctic", "Golden", "Neon", "Cinema", "Clean" }
+                local names = entry.key == "combatHudPosition" and { "Center", "Left", "Right" } or entry.key == "chamsStyle" and { "Radiant", "Outline", "Classic", "Spectral" } or entry.key == "skeletonStyle" and { "Silk", "Jointed", "Classic", "Ribbon" } or entry.key == "espStyle" and { "Classic", "Glass", "Minimal", "Trace" } or entry.key == "gfxTier" and { "Low", "Balanced", "Ultra" } or { "Arctic", "Golden", "Neon", "Cinema", "Clean" }
                 local panel = create("Frame", detailBody, { Size = UDim2.new(1, -20, 0, 95), BackgroundTransparency = 1, LayoutOrder = 1 })
                 table.insert(temporaryRows, panel)
                 local buttons = {}
@@ -5020,6 +5020,96 @@ renderLabels=function(screen,candidate,low,high,camera,color)
         end
     end
 end
+
+do
+local spaciousLabels=renderLabels
+renderLabels=function(screen,candidate,low,high,camera,color)
+    if settings.espStyle~=4 then
+        if screen.infoCard then
+            screen.friendBadge.Position=UDim2.new(1,-41,0,4); screen.friendBadge.Size=UDim2.fromOffset(35,12); screen.friendBadge.TextSize=8
+            screen.friendBadge.BackgroundTransparency=.28
+            if screen.hpTrack.Parent~=screen.infoCard then
+                screen.hpTrack.Parent=screen.infoCard
+                screen.hpFill.AnchorPoint=Vector2.new(0,0); screen.hpFill.Position=UDim2.fromScale(0,0); screen.shownHp=nil
+            end
+            screen.hpTrack.Position=UDim2.new(0,6,1,-3)
+        end
+        spaciousLabels(screen,candidate,low,high,camera,color); return
+    end
+    ensureCard(screen)
+    for _,label in ipairs({screen.nameLabel,screen.healthLabel,screen.distanceLabel}) do label.Parent=screen.infoCard; label.Visible=false; label.TextStrokeTransparency=1 end
+    screen.infoCard.Visible=false; screen.cardHalo.Visible=false; screen.weaponChip.Visible=false
+    screen.weaponLabel.Visible=false; screen.anchorDot.Visible=false; screen.friendBadge.Visible=false
+    screen.healthPill.Visible=false; screen.identityAccent.Visible=false; screen.hpTrack.Visible=false
+    if screen.labelLeader then screen.labelLeader.Visible=false end
+    if screen.healthTween then screen.healthTween:Cancel(); screen.healthTween=nil end
+    local bodyHeight=math.max(1,high.Y-low.Y)
+    local near=bodyHeight>=100
+    local allied=isFriend(candidate.owner)
+    local fraction=math.clamp(candidate.humanoid.Health/math.max(1,candidate.humanoid.MaxHealth),0,1)
+    local name=settings.names and (candidate.owner and candidate.owner.Name or candidate.model.Name) or allied and "ALLY" or ""
+    local meters=math.round((candidate.root.Position-camera.CFrame.Position).Magnitude*.28)
+    local hp=settings.health and ((near or fraction<.35) and tostring(math.ceil(candidate.humanoid.Health)).." HP" or "") or ""
+    local distance=settings.distance and tostring(meters).." м" or ""
+    if name=="" and hp=="" and distance=="" and not settings.health then return end
+    local width,height=near and 116 or 98,near and 28 or 23
+    local left=math.round((low.X+high.X)*.5-width*.5)
+    local top=math.round(low.Y-height-7)
+    local viewport=camera.ViewportSize
+    -- Keep every label at its own head. A crowded farther label yields instead of moving away.
+    if left<0 or left+width>viewport.X or top<0 or top+height>viewport.Y then return end
+    local function cells(callback)
+        for gx=math.floor(left/128),math.floor((left+width+3)/128) do
+            for gy=math.floor(top/64),math.floor((top+height+3)/64) do
+                if callback("trace:"..gx..":"..gy) then return true end
+            end
+        end
+        return false
+    end
+    if cells(function(key)
+        for _,rect in ipairs(occupiedLabels[key] or {}) do
+            if left<rect.right+3 and left+width+3>rect.left and top<rect.bottom+3 and top+height+3>rect.top then return true end
+        end
+        return false
+    end) then return end
+    local rect={left=left,top=top,right=left+width,bottom=top+height}
+    cells(function(key) occupiedLabels[key]=occupiedLabels[key] or {}; table.insert(occupiedLabels[key],rect) end)
+    local card=screen.infoCard
+    card.Visible=true; card.Position=UDim2.fromOffset(left,top); card.Size=UDim2.fromOffset(width,height)
+    card.BackgroundColor3=Color3.fromRGB(12,16,24); card.BackgroundTransparency=1
+    card:FindFirstChildOfClass("UICorner").CornerRadius=UDim.new(0,4)
+    screen.infoRim.Enabled=false
+    screen.nameLabel.Visible=name~=""; screen.nameLabel.Text=name
+    screen.nameLabel.Position=UDim2.fromOffset(5,1); screen.nameLabel.Size=UDim2.fromOffset(width-(allied and settings.names and 32 or 10),near and 13 or 11)
+    screen.nameLabel.TextSize=near and 11 or 10; screen.nameLabel.Font=Enum.Font.GothamMedium
+    screen.nameLabel.TextTruncate=Enum.TextTruncate.AtEnd; screen.nameLabel.TextXAlignment=Enum.TextXAlignment.Left
+    screen.nameLabel.TextColor3=allied and Color3.fromRGB(146,242,211) or Color3.fromRGB(232,235,245)
+    screen.nameLabel.TextStrokeTransparency=.35
+    screen.friendBadge.Visible=allied and settings.names
+    screen.friendBadge.Position=UDim2.new(1,-27,0,2); screen.friendBadge.Size=UDim2.fromOffset(23,10); screen.friendBadge.TextSize=7
+    screen.friendBadge.BackgroundTransparency=1
+    screen.healthLabel.Text=hp; screen.healthLabel.Visible=hp~=""
+    screen.healthLabel.Position=UDim2.fromOffset(5,name~="" and (near and 14 or 12) or 3)
+    screen.healthLabel.Size=UDim2.fromOffset(width*.5,10); screen.healthLabel.TextSize=8; screen.healthLabel.TextXAlignment=Enum.TextXAlignment.Left
+    screen.healthLabel.TextColor3=fraction<.35 and Color3.fromRGB(255,149,160) or Color3.fromRGB(174,206,196)
+    screen.distanceLabel.Text=distance; screen.distanceLabel.Visible=distance~=""
+    screen.distanceLabel.Position=UDim2.fromOffset(5,name~="" and (near and 14 or 12) or 3)
+    screen.distanceLabel.Size=UDim2.fromOffset(width-10,10); screen.distanceLabel.TextSize=8
+    screen.distanceLabel.TextXAlignment=Enum.TextXAlignment.Right; screen.distanceLabel.TextColor3=Color3.fromRGB(161,172,189)
+    screen.healthLabel.TextStrokeTransparency=.4; screen.distanceLabel.TextStrokeTransparency=.4
+    screen.hpTrack.Visible=settings.health and not settings.healthBar
+    screen.hpTrack.Parent=screen.container
+    screen.hpTrack.Position=UDim2.fromOffset(low.X-5,low.Y); screen.hpTrack.Size=UDim2.fromOffset(1,bodyHeight)
+    screen.hpTrack.BackgroundTransparency=.55
+    screen.hpFill.AnchorPoint=Vector2.new(0,1); screen.hpFill.Position=UDim2.fromScale(0,1)
+    screen.hpFill.Size=UDim2.fromScale(1,fraction); screen.hpFill.BackgroundColor3=screen.healthLabel.TextColor3
+    if near and settings.weapon then
+        local weapon=heldItem(candidate.model)
+        if weapon then placeLabel(screen.weaponLabel,weapon.Name,(low.X+high.X)*.5,high.Y+3,9,.5,0,camera,Color3.fromRGB(190,198,211),false,0); screen.weaponLabel.TextStrokeTransparency=.45 end
+    end
+end
+end
+
 
 end
 
