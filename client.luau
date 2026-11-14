@@ -23,6 +23,9 @@ end
 
 -- Every exposed setting has its own description, bounds and keyboard actions.
 local definitions = {
+    { "combatHudScale", 100, "HUD Scale", "Размер Combat HUD в процентах. Автоматически ограничивается размером экрана.", "Настройки", 75, 135 },
+    { "combatHudPosition", 1, "HUD Position", "Положение Combat HUD: по центру, слева или справа. Камера и прицел не меняются.", "Настройки", 1, 3 },
+    { "combatHudHeight", 160, "HUD Height", "Расстояние Combat HUD от нижнего края экрана. Увеличь, если он перекрывает игровой интерфейс.", "Настройки", 100, 360 },
     { "chamsStyle", 1, "Chams Style", "1 — Radiant: светлый цельный силуэт с перламутровым контуром; 2 — Outline: только контур; 3 — Classic. Fill Opacity регулирует интенсивность Radiant, 0 убирает заливку.", "ESP", 1, 3 },
     { "skeletonStyle", 1, "Skeleton Style", "1 — Silk: тонкие светлые линии без точек; 2 — Jointed: суставы только вблизи; 3 — Classic. Вдали детализация уменьшается, чтобы скелет не превращался в чёрные точки.", "ESP", 1, 3 },
     { "combatHud", true, "Combat HUD", "Компактно показывает твоё здоровье, оружие, патроны и режим огня. Неизвестные данные отмечены прочерком.", "Настройки" },
@@ -302,10 +305,10 @@ local function saveConfig()
 end
 
 local palette = {
-    background = Color3.fromRGB(8, 13, 18), panel = Color3.fromRGB(15, 23, 30),
-    control = Color3.fromRGB(22, 33, 42), edge = Color3.fromRGB(121, 144, 160),
+    background = Color3.fromRGB(11, 13, 17), panel = Color3.fromRGB(20, 23, 29),
+    control = Color3.fromRGB(29, 33, 40), edge = Color3.fromRGB(102, 113, 129),
     accent = Color3.fromRGB(238, 238, 243), text = Color3.fromRGB(240, 240, 243),
-    muted = Color3.fromRGB(165, 165, 174),
+    muted = Color3.fromRGB(156, 165, 180),
 }
 local function create(class, parent, properties)
     local object = Instance.new(class)
@@ -369,7 +372,7 @@ local menu = create("CanvasGroup", gui, {
 rounded(menu, 22)
 stroke(menu, palette.accent)
 create("UIGradient", menu, {
-    Color = ColorSequence.new(Color3.fromRGB(235, 235, 240), Color3.fromRGB(130, 130, 140)),
+    Color = ColorSequence.new(Color3.fromRGB(248, 250, 255), Color3.fromRGB(180, 189, 204)),
     Rotation = 35,
 })
 local scale = create("UIScale", menu, { Scale = 1 })
@@ -378,17 +381,31 @@ local title = text(menu, "OKTAN", {
     Position = UDim2.fromOffset(24, 15), Size = UDim2.fromOffset(480, 32),
     TextSize = 23, Font = Enum.Font.GothamBold, TextXAlignment = Enum.TextXAlignment.Left,
 })
-text(menu, "STUDIO   /   WINTER", {
+text(menu, "ATELIER   /   WINTER", {
     Position = UDim2.fromOffset(65, 48), Size = UDim2.fromOffset(340, 18),
     TextColor3 = palette.muted, TextXAlignment = Enum.TextXAlignment.Left,
 })
 local function button(parent, label, position, size)
     local result = text(parent, label, {
-        Position = position, Size = size, BackgroundTransparency = 0.45,
-        BackgroundColor3 = palette.control, AutoButtonColor = true,
+        Position = position, Size = size, BackgroundTransparency = 0.16,
+        BackgroundColor3 = palette.control, AutoButtonColor = false,
     }, "TextButton")
-    rounded(result, 8)
+    rounded(result, 11)
     stroke(result)
+    if label~="" and parent.Name~="TreeCanvas" and parent.Name~="FunctionCanvas" and not parent:IsA("TextButton") then
+        local hoverTween,rest
+        local function hover(active)
+            if hoverTween then hoverTween:Cancel() end
+            if active then rest=result.BackgroundColor3 end
+            local target=active and (rest or palette.control):Lerp(palette.accent,.07) or rest or palette.control
+            if settings.motion and not settings.lowFx then
+                hoverTween=TweenService:Create(result,TweenInfo.new(.2,Enum.EasingStyle.Quart,Enum.EasingDirection.Out),{BackgroundColor3=target}); hoverTween:Play()
+            else result.BackgroundColor3=target end
+        end
+        result.MouseEnter:Connect(function() hover(true) end)
+        result.MouseLeave:Connect(function() hover(false) end)
+        result.AncestryChanged:Connect(function() if not result.Parent and hoverTween then hoverTween:Cancel() end end)
+    end
     return result
 end
 local hide = button(menu, "Hide", UDim2.new(1, -132, 0, 24), UDim2.fromOffset(108, 30))
@@ -470,7 +487,7 @@ for index, name in ipairs({ "Наведение", "ESP", "Мир", "Камера
         Position = UDim2.fromOffset(177, 88), Size = UDim2.fromOffset(721, 470),
         BackgroundTransparency = 1, BorderSizePixel = 0,
         CanvasSize = UDim2.fromOffset(0, 0), AutomaticCanvasSize = Enum.AutomaticSize.Y,
-        ScrollBarThickness = 3, ScrollBarImageColor3 = palette.accent,
+        ScrollBarThickness = 4, ScrollBarImageColor3 = palette.accent,
         Visible = index == 1,
     })
     create("UIListLayout", page, { Padding = UDim.new(0, 8), SortOrder = Enum.SortOrder.LayoutOrder })
@@ -838,7 +855,7 @@ local function initializeLocalMusic()
     local seek = button(form, "", UDim2.fromOffset(16, 164), UDim2.new(1, -32, 0, 8))
     local fill = create("Frame", seek, { Size = UDim2.fromScale(0, 1), BackgroundColor3 = palette.accent, BorderSizePixel = 0 })
     rounded(fill, 4)
-    local list = create("ScrollingFrame", form, { Position = UDim2.fromOffset(16, 188), Size = UDim2.new(1, -32, 0, 220), BackgroundTransparency = 1, ScrollBarThickness = 3, CanvasSize = UDim2.fromOffset(0, 0), AutomaticCanvasSize = Enum.AutomaticSize.Y })
+    local list = create("ScrollingFrame", form, { Position = UDim2.fromOffset(16, 188), Size = UDim2.new(1, -32, 0, 220), BackgroundTransparency = 1, ScrollBarThickness = 4, CanvasSize = UDim2.fromOffset(0, 0), AutomaticCanvasSize = Enum.AutomaticSize.Y })
     local api = { form = form, normalize = normalize }
     local function current()
         local tracks = library()
@@ -1081,7 +1098,7 @@ local function initializeSpotify()
     local pause = button(form, "Pause", UDim2.fromOffset(132, 138), UDim2.fromOffset(110, 34))
     local stop = button(form, "Stop", UDim2.fromOffset(252, 138), UDim2.fromOffset(110, 34))
     local info = text(form, "Нужен локальный Spotify Bridge • музыка звучит из Spotify на выбранном ПК", { Position = UDim2.fromOffset(12, 184), Size = UDim2.new(1, -24, 0, 40), TextWrapped = true, TextColor3 = palette.muted, TextXAlignment = Enum.TextXAlignment.Left })
-    local list = create("ScrollingFrame", form, { Position = UDim2.fromOffset(12, 238), Size = UDim2.new(1, -24, 0, 196), BackgroundTransparency = 1, ScrollBarThickness = 3, AutomaticCanvasSize = Enum.AutomaticSize.Y, CanvasSize = UDim2.fromOffset(0, 0) })
+    local list = create("ScrollingFrame", form, { Position = UDim2.fromOffset(12, 238), Size = UDim2.new(1, -24, 0, 196), BackgroundTransparency = 1, ScrollBarThickness = 4, AutomaticCanvasSize = Enum.AutomaticSize.Y, CanvasSize = UDim2.fromOffset(0, 0) })
     local api = { form = form }
     local function loadPairing()
         if type(readfile) ~= "function" then error("Исполнитель не поддерживает чтение pairing-файла", 0) end
@@ -1794,7 +1811,7 @@ local island = create("Frame", gui, {
     ZIndex = 15,
 })
 rounded(island, 23)
-stroke(island, palette.accent).Transparency = 0.25
+stroke(island, palette.accent).Transparency = 0.58
 local islandScale = create("UIScale", island, { Scale = 1 })
 local islandHeader = text(island, "", { Size = UDim2.new(1, 0, 0, 44), TextSize = 12 }, "TextButton")
 connect(islandHeader.Activated, function() islandExpanded = not islandExpanded end)
@@ -1837,20 +1854,22 @@ do
 local function initializeMusicIsland()
     local root = create("Frame", islandHeader, {Name="MusicCapsule", Size=UDim2.new(1,0,0,48), BackgroundTransparency=1, Visible=false})
     local expanded = create("Frame", islandList, {Name="MusicRow", Size=UDim2.new(1,0,0,52), BackgroundTransparency=1, LayoutOrder=-10, Visible=false})
-    local emblem = button(root,"O",UDim2.fromOffset(10,9),UDim2.fromOffset(30,30))
+    local emblem = button(root,"",UDim2.fromOffset(10,9),UDim2.fromOffset(30,30))
     emblem.TextSize=16; emblem.TextColor3=palette.accent
+    local brandMark=create("Frame",emblem,{AnchorPoint=Vector2.new(.5,.5),Position=UDim2.fromScale(.5,.5),Size=UDim2.fromOffset(12,12),Rotation=-15,BackgroundTransparency=1,BorderSizePixel=0})
+    rounded(brandMark,4); local brandEdge=stroke(brandMark,palette.accent,2)
     describe(emblem,"Открыть и свернуть Dynamic Island. Музыка управляется кнопками справа.")
     connect(emblem.Activated,function() islandExpanded=not islandExpanded end)
     local clip = create("Frame",root,{Position=UDim2.fromOffset(50,5),Size=UDim2.new(1,-188,0,39),BackgroundTransparency=1,ClipsDescendants=true})
     local first = text(clip,"",{Name="MusicLine",Position=UDim2.fromOffset(0,0),Size=UDim2.new(1,0,0,21),TextSize=14,Font=Enum.Font.GothamBold,TextXAlignment=Enum.TextXAlignment.Left,TextTruncate=Enum.TextTruncate.None})
     local second = text(clip,"",{Name="MusicLineTransition",Position=UDim2.fromOffset(0,10),Size=UDim2.new(1,0,0,21),TextSize=14,Font=Enum.Font.GothamBold,TextXAlignment=Enum.TextXAlignment.Left,TextTruncate=Enum.TextTruncate.None,TextTransparency=1})
     local subtitle=text(clip,"",{Position=UDim2.fromOffset(0,22),Size=UDim2.new(1,0,0,16),TextSize=10,TextColor3=palette.muted,TextXAlignment=Enum.TextXAlignment.Left,TextTruncate=Enum.TextTruncate.AtEnd})
-    local bar=create("Frame",root,{Position=UDim2.fromOffset(50,45),Size=UDim2.new(1,-188,0,1),BackgroundColor3=palette.control,BackgroundTransparency=0.45,BorderSizePixel=0})
+    local bar=create("Frame",root,{Position=UDim2.fromOffset(50,45),Size=UDim2.new(1,-188,0,2),BackgroundColor3=palette.control,BackgroundTransparency=0.45,BorderSizePixel=0})
     local fill=create("Frame",bar,{Size=UDim2.fromScale(0,1),BackgroundColor3=palette.accent,BorderSizePixel=0})
     local controls={}
     for i,entry in ipairs({{"previous","<<"},{"play",">"},{"next",">>"},{"stop",""}}) do
         local item=button(root,entry[2],UDim2.new(1,-132+(i-1)*30,0,10),UDim2.fromOffset(26,28))
-        item.TextSize=12; item.BackgroundTransparency=0.8
+        item.TextSize=12; item.BackgroundTransparency=0.28
         if entry[1]=="stop" then
             local square=create("Frame",item,{AnchorPoint=Vector2.new(.5,.5),Position=UDim2.fromScale(.5,.5),Size=UDim2.fromOffset(7,7),BackgroundColor3=palette.muted,BorderSizePixel=0}); rounded(square,2)
         end
@@ -1983,7 +2002,7 @@ local function initializeMusicIsland()
             incoming.Position=UDim2.fromOffset(-offset,0)
         end
         incoming.TextColor3=palette.text
-        emblem.TextColor3,fill.BackgroundColor3=palette.accent,palette.accent
+        emblem.TextColor3,fill.BackgroundColor3=palette.accent,palette.accent; brandEdge.Color=palette.accent
         controls.play.Text=data.playing and "II" or ">"
         fill.Size=UDim2.fromScale(progress,1)
         hint.Text=#cues>0 and not position and (lrcMessage.." • позиция недоступна, используй Sync 0:00") or hint.Text
@@ -2065,7 +2084,7 @@ local inspector = create("Frame", gui, {
     Size = UDim2.fromOffset(360, 350), BackgroundColor3 = palette.background,
     BackgroundTransparency = 0.035, BorderSizePixel = 0, Visible = false, ZIndex = 16,
 })
-rounded(inspector, 18)
+rounded(inspector, 24)
 stroke(inspector, palette.accent)
 local inspectorScale = create("UIScale", inspector, { Scale = 1 })
 text(inspector, "INSPECT / LOADOUT", {
@@ -2078,7 +2097,7 @@ local inspectClose = text(inspector, "×", {
 connect(inspectClose.Activated, function() controlRows.inspectorMotion.close() end)
 local inventoryScroll = create("ScrollingFrame", inspector, {
     Position = UDim2.fromOffset(18, 55), Size = UDim2.new(1, -36, 1, -73),
-    BackgroundTransparency = 1, BorderSizePixel = 0, ScrollBarThickness = 3,
+    BackgroundTransparency = 1, BorderSizePixel = 0, ScrollBarThickness = 4,
     AutomaticCanvasSize = Enum.AutomaticSize.Y, CanvasSize = UDim2.fromOffset(0, 0),
 })
 local inventoryBody = text(inventoryScroll, "", {
@@ -2180,7 +2199,7 @@ local preview = create("ViewportFrame", inspector, {
     LightColor = Color3.fromRGB(240, 240, 245),
     LightDirection = Vector3.new(-1, -1, -1),
 })
-rounded(preview, 12)
+rounded(preview, 18)
 local previewCamera = create("Camera", preview, { FieldOfView = 40 })
 preview.CurrentCamera = previewCamera
 local previewName = text(inspector, "", {
@@ -2569,13 +2588,13 @@ local function updateInventoryCards()
         local card = create("Frame", cardArea, {
             BackgroundColor3 = palette.panel, BorderSizePixel = 0, LayoutOrder = index,
         })
-        rounded(card, 10)
-        stroke(card,palette.accent).Transparency=.82
+        rounded(card, 14)
+        stroke(card,palette.accent).Transparency=.88
         controlRows.hudMotion.card(card,index)
         controlRows.inventoryArt.draw(card,entry.item,inspectTarget.Character,entry.reference)
         local caption = text(card, entry.item.Name, {
             Position = UDim2.fromOffset(6, 56), Size = UDim2.new(1, -12, 0, 34),
-            TextWrapped = true, TextSize = 12, TextScaled = true,
+            TextWrapped = true, TextSize = 12, TextScaled = true, Font=Enum.Font.GothamBold,
         })
         create("UITextSizeConstraint", caption, { MinTextSize = 8, MaxTextSize = 12 })
         text(card, entry.slot .. (entry.reference:GetAttribute("Amount") and " · ×"..tostring(entry.reference:GetAttribute("Amount")) or ""), {
@@ -2733,7 +2752,7 @@ end
 local search = text(menu, "", {
     Position = UDim2.fromOffset(465, 24), Size = UDim2.fromOffset(300, 32),
     BackgroundTransparency = 0.15, BackgroundColor3 = palette.control,
-    PlaceholderText = "Search...", PlaceholderColor3 = palette.muted,
+    PlaceholderText = "Search functions…  Ctrl+F", PlaceholderColor3 = palette.muted,
     ClearTextOnFocus = false, TextXAlignment = Enum.TextXAlignment.Left,
 }, "TextBox")
 rounded(search, 9)
@@ -2748,7 +2767,7 @@ local treeGroups = {
     ["Бинды"] = { "Инвентарь", "Dynamic Island", "Управление", "Назначения функций" },
     ["Настройки"] = { "Оформление", "Клиент", "Music", "Performance", "Combat" },
 }
-local settingGroup = { chamsStyle="Chams", skeletonStyle="Skeleton", combatHud="Combat", fightFocus="Combat", teamToasts="Combat", mapPlayers="Map", mapNames="Map", mapFriendsOnly="Map", mapTextSize="Map", containerReach="Инвентарь", containerEsp="Loot", auroraEsp="Loot", espStyle = "Цвет и оформление", skinTextures = "Оформление", islandMusic = "Dynamic Island", adaptiveEsp = "Performance", lowFx = "Performance", perfDebug = "Performance", yandexPlay = "Music", spotifyPlay = "Music", musicPlay = "Music", musicVolume = "Music", musicRepeat = "Music", musicIndex = "Music", noRecoil = "Weapon Tuning", aimEase = "Область и плавность", aimFilter = "Область и плавность", graphics = "Visual Studio", gfxTier = "Visual Studio", gfxLook = "Visual Studio", echo = "Оформление", echoDelay = "Оформление", echoFreeze = "Оформление", motion = "Оформление", killFx = "Оформление", crossStyle = "Прицел", crossWidth = "Прицел", noLeaves = "Vegetation", noGrass = "Vegetation", corpseEsp = "Loot", itemEsp = "Loot", lootThrough = "Loot", lootRange = "Loot", lootTextSize = "Loot",
+local settingGroup = { combatHudScale="Combat", combatHudPosition="Combat", combatHudHeight="Combat", chamsStyle="Chams", skeletonStyle="Skeleton", combatHud="Combat", fightFocus="Combat", teamToasts="Combat", mapPlayers="Map", mapNames="Map", mapFriendsOnly="Map", mapTextSize="Map", containerReach="Инвентарь", containerEsp="Loot", auroraEsp="Loot", espStyle = "Цвет и оформление", skinTextures = "Оформление", islandMusic = "Dynamic Island", adaptiveEsp = "Performance", lowFx = "Performance", perfDebug = "Performance", yandexPlay = "Music", spotifyPlay = "Music", musicPlay = "Music", musicVolume = "Music", musicRepeat = "Music", musicIndex = "Music", noRecoil = "Weapon Tuning", aimEase = "Область и плавность", aimFilter = "Область и плавность", graphics = "Visual Studio", gfxTier = "Visual Studio", gfxLook = "Visual Studio", echo = "Оформление", echoDelay = "Оформление", echoFreeze = "Оформление", motion = "Оформление", killFx = "Оформление", crossStyle = "Прицел", crossWidth = "Прицел", noLeaves = "Vegetation", noGrass = "Vegetation", corpseEsp = "Loot", itemEsp = "Loot", lootThrough = "Loot", lootRange = "Loot", lootTextSize = "Loot",
     noVisor = "Vision", cameraFov = "Vision", cameraFovValue = "Vision",
     viewmodel = "Viewmodel", vmX = "Viewmodel", vmY = "Viewmodel", vmZ = "Viewmodel", sticky = "Наведение", noFog = "Освещение", bubbles = "Оформление", snow = "Оформление", snowDrifts = "Оформление", friendHats = "Оформление", espFps = "Цвет и оформление", adaptiveText = "Подписи",
     aim = "Наведение", aimPlayers = "Цели и проверки", aimDummies = "Цели и проверки",
@@ -2769,7 +2788,7 @@ local settingGroup = { chamsStyle="Chams", skeletonStyle="Skeleton", combatHud="
 }
 local searchResults = create("ScrollingFrame", menu, {
     Position = UDim2.fromOffset(177, 88), Size = UDim2.fromOffset(721, 470),
-    BackgroundTransparency = 1, BorderSizePixel = 0, ScrollBarThickness = 3,
+    BackgroundTransparency = 1, BorderSizePixel = 0, ScrollBarThickness = 4,
     AutomaticCanvasSize = Enum.AutomaticSize.Y, CanvasSize = UDim2.fromOffset(0, 0),
     Visible = false,
 })
@@ -2905,7 +2924,7 @@ end
 table.insert(cleanups, cancelAnimations)
 local graph = create("ScrollingFrame", menu, {
     Position = UDim2.fromOffset(20, 88), Size = UDim2.fromOffset(880, 470),
-    BackgroundTransparency = 1, BorderSizePixel = 0, ScrollBarThickness = 3,
+    BackgroundTransparency = 1, BorderSizePixel = 0, ScrollBarThickness = 4,
     CanvasSize = UDim2.fromOffset(880, 470), ScrollBarImageColor3 = palette.accent,
 })
 local detail = create("Frame", menu, {
@@ -2925,7 +2944,7 @@ end)
 local back = button(detail, "Back", UDim2.fromOffset(12, 8), UDim2.fromOffset(80, 32))
 local detailBody = create("ScrollingFrame", detail, {
     Position = UDim2.fromOffset(12, 54), Size = UDim2.new(1, -24, 1, -68),
-    BackgroundTransparency = 1, BorderSizePixel = 0, ScrollBarThickness = 3,
+    BackgroundTransparency = 1, BorderSizePixel = 0, ScrollBarThickness = 4,
     AutomaticCanvasSize = Enum.AutomaticSize.Y, CanvasSize = UDim2.fromOffset(0, 0),
 })
 create("UIListLayout", detailBody, { SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, 10) })
@@ -2948,6 +2967,7 @@ local function openDetail(titleText)
     activeDetailEntry = nil
     clearDetail()
     detailTitle.Text = titleText
+    if controlRows.menuNav then controlRows.menuNav.updatePath(titleText) end
     detail.Visible, graph.Visible = true, false
     detail.Position = UDim2.fromOffset(32, 88)
     detail.BackgroundTransparency = 0.35
@@ -2975,7 +2995,7 @@ do
     local searchBox=text(friendForm,"",{Name="FriendSearch",Position=UDim2.fromOffset(8,155),Size=UDim2.new(1,-165,0,30),BackgroundColor3=palette.control,BackgroundTransparency=.4,PlaceholderText="Search squad…",ClearTextOnFocus=false,TextXAlignment=Enum.TextXAlignment.Left},"TextBox")
     rounded(searchBox,9); create("UIPadding",searchBox,{PaddingLeft=UDim.new(0,11)})
     local countLabel=text(friendForm,"",{Position=UDim2.new(1,-150,0,209),Size=UDim2.fromOffset(142,30),TextSize=11,TextColor3=palette.muted,TextXAlignment=Enum.TextXAlignment.Right})
-    local list=create("ScrollingFrame",friendForm,{Name="SquadCards",Position=UDim2.fromOffset(8,198),Size=UDim2.new(1,-16,0,186),BackgroundTransparency=1,BorderSizePixel=0,AutomaticCanvasSize=Enum.AutomaticSize.Y,CanvasSize=UDim2.fromOffset(0,0),ScrollBarThickness=3})
+    local list=create("ScrollingFrame",friendForm,{Name="SquadCards",Position=UDim2.fromOffset(8,198),Size=UDim2.new(1,-16,0,186),BackgroundTransparency=1,BorderSizePixel=0,AutomaticCanvasSize=Enum.AutomaticSize.Y,CanvasSize=UDim2.fromOffset(0,0),ScrollBarThickness=4})
     local cards={}
     local function roster()
         local players={}
@@ -3173,6 +3193,94 @@ end
 controlRows.friendServers=initializeFriendServers()
 end
 
+do
+local function initializeMenuNavigation()
+    local api={favorites={},actions={}}
+    local path=text(menu,"OKTAN",{Name="MenuBreadcrumb",Position=UDim2.fromOffset(30,79),Size=UDim2.fromOffset(850,14),TextSize=9,TextColor3=palette.muted,TextXAlignment=Enum.TextXAlignment.Left,TextTruncate=Enum.TextTruncate.AtEnd})
+    local launcher=button(menu,"Favorites",UDim2.new(1,-264,1,-40),UDim2.fromOffset(116,26))
+    launcher.Name="FavoritesButton"; launcher.TextSize=10
+    if type(readfile)=="function" then
+        pcall(function()
+            local raw=readfile("Oktan-menu-favorites.json")
+            if #raw>8192 then return end
+            local data=HttpService:JSONDecode(raw)
+            if type(data)~="table" or data.version~=1 or type(data.keys)~="table" then return end
+            for index,key in ipairs(data.keys) do if index<=24 and type(key)=="string" and schema[key] then api.favorites[key]=true end end
+        end)
+    end
+    local function save()
+        local keys={}; for key in pairs(api.favorites) do table.insert(keys,key) end; table.sort(keys)
+        if type(writefile)=="function" then pcall(writefile,"Oktan-menu-favorites.json",HttpService:JSONEncode({version=1,keys=keys})) end
+    end
+    api.updatePath=function(title)
+        path.Text="OKTAN   /   "..(displayNames[selectedCategory] or selectedCategory or "Menu").."   /   "..(selectedGroup or "")..(title and "   /   "..title or "")
+        path.TextColor3=palette.muted
+    end
+    api.toggle=function(key)
+        if not schema[key] then return false end
+        if api.favorites[key] then api.favorites[key]=nil
+        else
+            local count=0; for _ in pairs(api.favorites) do count+=1 end
+            if count>=24 then configStatus="В избранном уже 24 функции"; return false end
+            api.favorites[key]=true
+        end
+        save(); return true
+    end
+    api.open=function(key)
+        local entry=schema[key]; if not entry then return false end
+        clearDetail(); detail.Visible=false; graph.Visible=true; search.Text=""
+        selectedCategory=entry[5]; selectedGroup=settingGroup[key]
+        renderGraph()
+        local action=api.actions[key]
+        if action then action(); api.updatePath(entry[3]); return true end
+        return false
+    end
+    api.register=function(key,action,object)
+        api.actions[key]=action
+        local pin=button(object,api.favorites[key] and "*" or "+",UDim2.new(1,-25,0,7),UDim2.fromOffset(19,20))
+        pin.Name="FavoritePin"; pin.BackgroundTransparency=1; pin.TextSize=16; pin.ZIndex=5
+        local border=pin:FindFirstChildOfClass("UIStroke"); if border then border.Enabled=false end
+        pin.TextColor3=api.favorites[key] and palette.accent or palette.muted
+        local padding=object:FindFirstChildOfClass("UIPadding"); if padding then padding.PaddingRight=UDim.new(0,32) end
+        pin.Activated:Connect(function()
+            if api.toggle(key) then pin.Text=api.favorites[key] and "*" or "+"; pin.TextColor3=api.favorites[key] and palette.accent or palette.muted end
+        end)
+        describe(pin,"Избранное: + — добавить, * — убрать. Открывается кнопкой Favorites внизу меню.")
+    end
+    api.showFavorites=function()
+        openDetail("Favorites")
+        local keys={}; for key in pairs(api.favorites) do table.insert(keys,key) end
+        table.sort(keys,function(a,b) return schema[a][3]<schema[b][3] end)
+        if #keys==0 then
+            local empty=text(detailBody,"Добавь нужные функции кнопкой + справа от названия.\nЗдесь будут быстрые переходы к их настройкам.",{Size=UDim2.new(1,-20,0,88),TextSize=14,TextColor3=palette.muted,TextWrapped=true})
+            table.insert(temporaryRows,empty)
+        end
+        for index,key in ipairs(keys) do
+            local entry=schema[key]
+            local card=button(detailBody,entry[3]..bindingSuffix(key),UDim2.fromOffset(0,0),UDim2.new(1,-20,0,48))
+            card.LayoutOrder=index; card.TextXAlignment=Enum.TextXAlignment.Left
+            create("UIPadding",card,{PaddingLeft=UDim.new(0,18)})
+            table.insert(temporaryRows,card)
+            card.Activated:Connect(function() api.open(key) end)
+        end
+        api.updatePath("Favorites")
+    end
+    connect(launcher.Activated,api.showFavorites)
+    api.back=function()
+        if detail.Visible then
+            clearDetail(); detail.Visible=false; graph.Visible=true; renderGraph(); api.updatePath()
+        else setMenu(false) end
+    end
+    connect(Input.InputBegan,function(input,processed)
+        if processed or not menu.Visible or not focused or capture or pendingNumeric or bindDialog.Visible or Input:GetFocusedTextBox() then return end
+        if input.KeyCode==Enum.KeyCode.Backspace or (input.KeyCode==Enum.KeyCode.Left and (Input:IsKeyDown(Enum.KeyCode.LeftAlt) or Input:IsKeyDown(Enum.KeyCode.RightAlt))) then api.back() end
+    end)
+    api.updatePath()
+    return api
+end
+controlRows.menuNav=initializeMenuNavigation()
+end
+
 local function gconnect(event, callback)
     table.insert(graphConnections, event:Connect(callback))
 end
@@ -3204,13 +3312,13 @@ local function node(label, x, y, width, selected, callback)
     object:FindFirstChildOfClass("UICorner").CornerRadius = UDim.new(0, 10)
     create("UIGradient", object, {
         Rotation = 90,
-        Color = ColorSequence.new(Color3.fromRGB(230, 241, 252), Color3.fromRGB(100, 125, 146)),
+        Color = ColorSequence.new(Color3.fromRGB(248, 250, 255), Color3.fromRGB(182, 191, 207)),
     })
     object.TextXAlignment = Enum.TextXAlignment.Left
     create("UIPadding", object, { PaddingLeft = UDim.new(0, 24), PaddingRight = UDim.new(0, 10) })
     local indicator = create("Frame", object, {
         AnchorPoint = Vector2.new(0, 0.5),
-        Position = UDim2.new(0, -15, 0.5, 0), Size = UDim2.fromOffset(3, 12),
+        Position = UDim2.new(0, 10, 0.5, 0), Size = UDim2.fromOffset(2, 10),
         BackgroundColor3 = palette.accent, BackgroundTransparency = selected and 0.1 or 1,
         BorderSizePixel = 0,
     })
@@ -3232,8 +3340,8 @@ local function node(label, x, y, width, selected, callback)
     local hoverTween
     gconnect(object.MouseEnter, function()
         if hoverTween then hoverTween:Cancel() end
-        hoverTween = TweenService:Create(object, TweenInfo.new(0.14), {
-            BackgroundColor3 = palette.control:Lerp(palette.accent,.15), TextColor3 = Color3.fromRGB(255, 255, 255),
+        hoverTween = TweenService:Create(object, TweenInfo.new(0.22,Enum.EasingStyle.Quart,Enum.EasingDirection.Out), {
+            BackgroundColor3 = palette.control:Lerp(palette.accent,.08), TextColor3 = Color3.fromRGB(255, 255, 255),
         })
         hoverTween:Play()
     end)
@@ -3248,6 +3356,7 @@ local function node(label, x, y, width, selected, callback)
     return object
 end
 renderGraph = function()
+    if controlRows.menuNav then controlRows.menuNav.updatePath() end
     if detail.Visible then return end
     if selectedCategory == "Бинды" or selectedCategory == "Friends" then
         selectedCategory, selectedGroup = "Настройки", "Оформление"
@@ -3320,7 +3429,7 @@ renderGraph = function()
         end)
         if group == selectedGroup then selectedY = y + 17 end
     end
-    local leafScroll=create("ScrollingFrame",controlRows.graphCanvas,{Name="FunctionList",Position=UDim2.fromOffset(520,14),Size=UDim2.fromOffset(344,438),BackgroundTransparency=1,BorderSizePixel=0,ScrollBarThickness=3,ScrollBarImageColor3=palette.accent,ScrollingDirection=Enum.ScrollingDirection.Y,CanvasSize=UDim2.fromOffset(344,438)})
+    local leafScroll=create("ScrollingFrame",controlRows.graphCanvas,{Name="FunctionList",Position=UDim2.fromOffset(520,14),Size=UDim2.fromOffset(344,438),BackgroundTransparency=1,BorderSizePixel=0,ScrollBarThickness=4,ScrollBarImageColor3=palette.accent,ScrollingDirection=Enum.ScrollingDirection.Y,CanvasSize=UDim2.fromOffset(344,438)})
     controlRows.leafCanvas=create("Frame",leafScroll,{Name="FunctionCanvas",Size=UDim2.fromOffset(344,438),BackgroundTransparency=1,BorderSizePixel=0})
     local lastDelta
     controlRows.updateFunctionBranches=function()
@@ -3350,7 +3459,7 @@ renderGraph = function()
         local assigned = bindings[entry.key]
         local label = (entry.key:match("Hue$") and (entry.key == "menuHue" and "Menu Color" or entry.key == "espHue" and "ESP Color" or "FOV Color") or definition[3])
         if query ~= "" then label = (displayNames[entry.page] or entry.page) .. " / " .. label end
-        local control = node(label .. bindingSuffix(entry.key), 588, y, 258, settings[entry.key] == true, function()
+        local activateEntry=function()
             openDetail(definition[3])
             activeDetailEntry = { label = definition[3], key = entry.key }
             detailTitle.Text = definition[3] .. bindingSuffix(entry.key)
@@ -3400,8 +3509,8 @@ renderGraph = function()
                 end)
                 local reset = button(panel, "Вернуть исходный", UDim2.fromOffset(8, 342), UDim2.fromOffset(200, 34))
                 reset.Activated:Connect(function() choose(initial) end)
-            elseif entry.key == "gfxTier" or entry.key == "gfxLook" or entry.key == "espStyle" or entry.key == "chamsStyle" or entry.key == "skeletonStyle" then
-                local names = entry.key == "chamsStyle" and { "Radiant", "Outline", "Classic" } or entry.key == "skeletonStyle" and { "Silk", "Jointed", "Classic" } or entry.key == "espStyle" and { "Classic", "Glass", "Minimal" } or entry.key == "gfxTier" and { "Low", "Balanced", "Ultra" } or { "Arctic", "Golden", "Neon", "Cinema", "Clean" }
+            elseif entry.key == "combatHudPosition" or entry.key == "gfxTier" or entry.key == "gfxLook" or entry.key == "espStyle" or entry.key == "chamsStyle" or entry.key == "skeletonStyle" then
+                local names = entry.key == "combatHudPosition" and { "Center", "Left", "Right" } or entry.key == "chamsStyle" and { "Radiant", "Outline", "Classic" } or entry.key == "skeletonStyle" and { "Silk", "Jointed", "Classic" } or entry.key == "espStyle" and { "Classic", "Glass", "Minimal" } or entry.key == "gfxTier" and { "Low", "Balanced", "Ultra" } or { "Arctic", "Golden", "Neon", "Cinema", "Clean" }
                 local panel = create("Frame", detailBody, { Size = UDim2.new(1, -20, 0, 95), BackgroundTransparency = 1, LayoutOrder = 1 })
                 table.insert(temporaryRows, panel)
                 local buttons = {}
@@ -3427,7 +3536,9 @@ renderGraph = function()
                 TextColor3 = palette.muted, LayoutOrder = 2,
             })
             table.insert(temporaryRows, explanation)
-        end)
+        end
+        local control = node(label .. bindingSuffix(entry.key), 588, y, 258, settings[entry.key] == true, activateEntry)
+        controlRows.menuNav.register(entry.key,activateEntry,control)
         control:SetAttribute("SettingKey",entry.key)
         graphBindingLabels[control] = { label = label, key = entry.key }
         middleBind(control, entry.key, gconnect)
@@ -3475,7 +3586,7 @@ local function applyTheme()
     for _, object in ipairs(island:GetDescendants()) do
         if object:IsA("UIStroke") then object.Color = accent end
     end
-    menu.BackgroundColor3 = Color3.fromRGB(8, 13, 18)
+    menu.BackgroundColor3 = Color3.fromRGB(11, 13, 17)
     for _, object in ipairs(menu:GetDescendants()) do
         if object:IsA("UIStroke") and object.Name ~= "DecorationStroke" and object.Name ~= "StudioNodeRim" then object.Color = accent; object.Transparency = 0.8 end
         if object:IsA("ScrollingFrame") then object.ScrollBarImageColor3 = accent end
@@ -3734,7 +3845,7 @@ local function initializeProfilesUI()
     local input=text(window,"",{Name="ProfileName",Position=UDim2.fromOffset(22,78),Size=UDim2.fromOffset(540,36),BackgroundColor3=palette.control,BackgroundTransparency=.2,PlaceholderText="Название конфига…",ClearTextOnFocus=false,TextXAlignment=Enum.TextXAlignment.Left},"TextBox")
     rounded(input,10); create("UIPadding",input,{PaddingLeft=UDim.new(0,12)})
     local new=button(window,"Создать",UDim2.fromOffset(574,78),UDim2.fromOffset(244,36))
-    local list=create("ScrollingFrame",window,{Name="SavedProfiles",Position=UDim2.fromOffset(22,130),Size=UDim2.fromOffset(232,336),BackgroundTransparency=1,BorderSizePixel=0,ScrollBarThickness=3,AutomaticCanvasSize=Enum.AutomaticSize.Y,CanvasSize=UDim2.fromOffset(0,0)})
+    local list=create("ScrollingFrame",window,{Name="SavedProfiles",Position=UDim2.fromOffset(22,130),Size=UDim2.fromOffset(232,336),BackgroundTransparency=1,BorderSizePixel=0,ScrollBarThickness=4,AutomaticCanvasSize=Enum.AutomaticSize.Y,CanvasSize=UDim2.fromOffset(0,0)})
     local panel=create("Frame",window,{Position=UDim2.fromOffset(270,130),Size=UDim2.fromOffset(548,336),BackgroundColor3=palette.panel,BackgroundTransparency=.12,BorderSizePixel=0}); rounded(panel,14)
     local summary=text(panel,"Выбери сохранённый конфиг или импортируй готовый.",{Position=UDim2.fromOffset(14,10),Size=UDim2.fromOffset(520,38),TextSize=12,TextWrapped=true,TextXAlignment=Enum.TextXAlignment.Left})
     local load=button(panel,"Применить",UDim2.fromOffset(14,62),UDim2.fromOffset(250,36))
@@ -4034,26 +4145,29 @@ local function initializeCombatUI()
     local api={elapsed=1,teamElapsed=1,states={},notices={},clock=0}
     local focus=false
     local priorExpanded
-    local hud=create("CanvasGroup",gui,{Name="CombatHUD",AnchorPoint=Vector2.new(.5,1),Position=UDim2.new(.5,0,1,-160),Size=UDim2.fromOffset(414,116),BackgroundColor3=palette.background,BackgroundTransparency=.04,BorderSizePixel=0,Visible=false,ZIndex=12})
+    local hud=create("CanvasGroup",gui,{Name="CombatHUD",AnchorPoint=Vector2.new(.5,1),Position=UDim2.new(.5,0,1,-160),Size=UDim2.fromOffset(464,148),BackgroundColor3=palette.background,BackgroundTransparency=.025,BorderSizePixel=0,Visible=false,ZIndex=12})
     rounded(hud,20); local rim=stroke(hud,palette.accent); rim.Transparency=.7
     create("UIGradient",hud,{Rotation=115,Color=ColorSequence.new(Color3.fromRGB(245,250,255),Color3.fromRGB(135,150,165))})
     local sheen=create("Frame",hud,{Name="TopHighlight",Position=UDim2.fromOffset(22,1),Size=UDim2.new(1,-44,0,1),BorderSizePixel=0,BackgroundColor3=Color3.fromRGB(220,238,248),BackgroundTransparency=.8})
     local visual={lastHp=nil,damage=0,visibility=0}
-    local divider=create("Frame",hud,{Position=UDim2.fromOffset(119,41),Size=UDim2.fromOffset(1,39),BorderSizePixel=0,BackgroundColor3=palette.edge,BackgroundTransparency=.65})
-    local separator=create("Frame",hud,{Position=UDim2.fromOffset(315,41),Size=UDim2.fromOffset(1,39),BorderSizePixel=0,BackgroundColor3=palette.edge,BackgroundTransparency=.65})
+    local divider=create("Frame",hud,{Position=UDim2.fromOffset(146,42),Size=UDim2.fromOffset(1,88),BorderSizePixel=0,BackgroundColor3=palette.edge,BackgroundTransparency=.85})
+    local separator=create("Frame",hud,{Position=UDim2.fromOffset(354,42),Size=UDim2.fromOffset(1,48),BorderSizePixel=0,BackgroundColor3=palette.edge,BackgroundTransparency=.85})
     local fit=create("UIScale",hud,{Scale=1})
     local title=text(hud,"COMBAT",{Position=UDim2.fromOffset(20,12),Size=UDim2.fromOffset(100,16),TextSize=9,TextColor3=palette.accent,TextXAlignment=Enum.TextXAlignment.Left})
-    local health=text(hud,"— HP",{Position=UDim2.fromOffset(20,39),Size=UDim2.fromOffset(95,36),TextSize=28,Font=Enum.Font.GothamBold,TextXAlignment=Enum.TextXAlignment.Left})
-    text(hud,"HEALTH",{Position=UDim2.fromOffset(21,76),Size=UDim2.fromOffset(90,12),TextSize=8,TextColor3=palette.muted,TextXAlignment=Enum.TextXAlignment.Left})
-    local weapon=text(hud,"—",{Position=UDim2.fromOffset(137,39),Size=UDim2.fromOffset(165,25),TextSize=17,TextTruncate=Enum.TextTruncate.AtEnd,TextXAlignment=Enum.TextXAlignment.Left})
-    local ammo=text(hud,"Патроны —",{Position=UDim2.fromOffset(330,37),Size=UDim2.fromOffset(66,35),TextSize=28,Font=Enum.Font.GothamBold,TextXAlignment=Enum.TextXAlignment.Left})
-    local capacity=text(hud,"/ —",{Name="AmmoCapacity",Position=UDim2.fromOffset(331,72),Size=UDim2.fromOffset(65,14),TextSize=10,TextColor3=palette.muted,TextXAlignment=Enum.TextXAlignment.Left})
-    local mode=text(hud,"—",{Name="WeaponMode",Position=UDim2.fromOffset(138,68),Size=UDim2.fromOffset(165,16),TextSize=10,TextColor3=palette.muted,TextXAlignment=Enum.TextXAlignment.Left,TextTruncate=Enum.TextTruncate.AtEnd})
-    local track=create("Frame",hud,{Position=UDim2.fromOffset(20,96),Size=UDim2.fromOffset(374,4),BackgroundColor3=palette.control,BorderSizePixel=0}); rounded(track,3)
+    local health=text(hud,"— HP",{Position=UDim2.fromOffset(20,43),Size=UDim2.fromOffset(112,40),TextSize=34,Font=Enum.Font.GothamBold,TextXAlignment=Enum.TextXAlignment.Left})
+    text(hud,"HEALTH",{Position=UDim2.fromOffset(21,91),Size=UDim2.fromOffset(110,14),TextSize=9,TextColor3=palette.muted,TextXAlignment=Enum.TextXAlignment.Left})
+    local weapon=text(hud,"—",{Position=UDim2.fromOffset(166,41),Size=UDim2.fromOffset(176,25),TextSize=18,Font=Enum.Font.GothamBold,TextTruncate=Enum.TextTruncate.AtEnd,TextXAlignment=Enum.TextXAlignment.Left})
+    local ammo=text(hud,"—",{Position=UDim2.fromOffset(370,39),Size=UDim2.fromOffset(74,40),TextSize=34,Font=Enum.Font.GothamBold,TextXAlignment=Enum.TextXAlignment.Left})
+    local capacity=text(hud,"/ —",{Name="AmmoCapacity",Position=UDim2.fromOffset(372,80),Size=UDim2.fromOffset(70,14),TextSize=11,TextColor3=palette.muted,TextXAlignment=Enum.TextXAlignment.Left})
+    local mode=text(hud,"—",{Name="WeaponMode",Position=UDim2.fromOffset(167,70),Size=UDim2.fromOffset(176,16),TextSize=10,TextColor3=palette.muted,TextXAlignment=Enum.TextXAlignment.Left,TextTruncate=Enum.TextTruncate.AtEnd})
+    local condition=text(hud,"CONDITION  —",{Name="WeaponCondition",Position=UDim2.fromOffset(167,99),Size=UDim2.fromOffset(278,14),TextSize=10,TextColor3=palette.muted,TextXAlignment=Enum.TextXAlignment.Left})
+    local conditionTrack=create("Frame",hud,{Name="ConditionTrack",Position=UDim2.fromOffset(166,122),Size=UDim2.fromOffset(278,4),BackgroundColor3=palette.control,BorderSizePixel=0,Visible=false}); rounded(conditionTrack,3)
+    local conditionFill=create("Frame",conditionTrack,{Name="ConditionFill",Size=UDim2.fromScale(0,1),BackgroundColor3=palette.accent,BorderSizePixel=0}); rounded(conditionFill,3)
+    local track=create("Frame",hud,{Position=UDim2.fromOffset(20,122),Size=UDim2.fromOffset(110,4),BackgroundColor3=palette.control,BorderSizePixel=0}); rounded(track,3)
     local fill=create("Frame",track,{Size=UDim2.fromScale(1,1),BackgroundColor3=palette.accent,BorderSizePixel=0}); rounded(fill,3)
     local damageFill=create("Frame",track,{Name="HealthTrail",Size=UDim2.fromScale(1,1),BackgroundColor3=Color3.fromRGB(245,182,139),BorderSizePixel=0,ZIndex=1}); rounded(damageFill,3); fill.ZIndex=2
-    local warning=text(hud,"",{Position=UDim2.fromOffset(123,13),Size=UDim2.fromOffset(165,14),TextSize=8,TextColor3=Color3.fromRGB(245,135,135),TextXAlignment=Enum.TextXAlignment.Left})
-    local focusButton=button(hud,"Focus OFF",UDim2.fromOffset(300,9),UDim2.fromOffset(94,24))
+    local warning=text(hud,"",{Position=UDim2.fromOffset(147,13),Size=UDim2.fromOffset(200,14),TextSize=8,TextColor3=Color3.fromRGB(245,135,135),TextXAlignment=Enum.TextXAlignment.Left})
+    local focusButton=button(hud,"Focus OFF",UDim2.fromOffset(350,9),UDim2.fromOffset(94,24))
     focusButton.TextSize=9; focusButton.AutoButtonColor=false
     focusButton.TextXAlignment=Enum.TextXAlignment.Left
     create("UIPadding",focusButton,{PaddingLeft=UDim.new(0,12)})
@@ -4111,11 +4225,17 @@ local function initializeCombatUI()
         if capacity and (capacity<=0 or capacity%1~=0) then capacity=nil end
         if current and capacity and current>capacity then current,capacity=nil,nil end
         local source=current~=nil and "replicated" or nil
+        -- Current condition belongs to the owned instance, never its shared definition.
+        local durability=stat(held,{"Durability","Condition"})
+        local maxDurability=stat(held,{"MaxDurability","MaxCondition"}) or stat(properties,{"MaxDurability","MaxCondition"})
+        if durability and durability<0 then durability=nil end
+        if maxDurability and maxDurability<=0 then maxDurability=nil end
+        if durability and maxDurability and durability>maxDurability then durability=nil end
         if current==nil and model then
             local a,b=controlRows.combatAmmo.read({type(label)=="string" and label or "",model.Name})
             if a then current,capacity,source=a,b,"native-hud" end
         end
-        return {hp=hp,maximum=maximum,weapon=type(label)=="string" and label or nil,mode=type(mode)=="string" and mode:sub(1,24) or nil,ammo=current,capacity=capacity,ammoSource=source}
+        return {hp=hp,maximum=maximum,weapon=type(label)=="string" and label or nil,mode=type(mode)=="string" and mode:sub(1,24) or nil,ammo=current,capacity=capacity,ammoSource=source,durability=durability,maxDurability=maxDurability}
     end
     local function drop(index)
         api.notices[index].card:Destroy(); table.remove(api.notices,index)
@@ -4193,8 +4313,13 @@ local function initializeCombatUI()
         noticeRoot.Visible=not hidden
         local camera=workspace.CurrentCamera
         if camera then
-            local factor=math.min(1,math.max(.25,(camera.ViewportSize.X-24)/420),math.max(.25,(camera.ViewportSize.Y-24)/600))
-            fit.Scale,noticeFit.Scale=factor*(.97+.03*visual.visibility),factor
+            local factor=math.min((settings.combatHudScale or 100)/100,math.max(.2,(camera.ViewportSize.X-48)/464),math.max(.2,(camera.ViewportSize.Y-24)/600))
+            fit.Scale=factor*(.97+.03*visual.visibility)
+            noticeFit.Scale=math.min(1,math.max(.25,(camera.ViewportSize.X-24)/420),math.max(.25,(camera.ViewportSize.Y-24)/600))
+            local side=settings.combatHudPosition or 1
+            hud.AnchorPoint=Vector2.new(side==2 and 0 or side==3 and 1 or .5,1)
+            local bottom=math.clamp(settings.combatHudHeight or 160,24,math.max(24,camera.ViewportSize.Y-148*factor-24))
+            hud.Position=UDim2.new(side==2 and 0 or side==3 and 1 or .5,side==2 and 24 or side==3 and -24 or 0,1,-bottom)
             noticeRoot.Position=UDim2.new(1,camera.ViewportSize.X<700 and -16 or -146,0,camera.ViewportSize.Y<600 and 110 or 205)
         end
         api.elapsed+=dt; api.teamElapsed+=dt
@@ -4209,6 +4334,12 @@ local function initializeCombatUI()
             ammo.Text=data.ammo~=nil and tostring(data.ammo) or "—"
             capacity.Text="/ "..(data.capacity and tostring(data.capacity) or "—")
             mode.Text=data.mode and string.upper(data.mode) or "РЕЖИМ НЕДОСТУПЕН"
+            local fraction=data.durability and data.maxDurability and data.durability/data.maxDurability
+            condition.Text=fraction and string.format("CONDITION   %.0f / %.0f   ·   %.1f%%",data.durability,data.maxDurability,fraction*100) or data.durability and string.format("CONDITION   %.0f",data.durability) or "CONDITION   —"
+            conditionTrack.Visible=fraction~=nil
+            conditionFill.Size=UDim2.fromScale(fraction or 0,1)
+            conditionFill.BackgroundColor3=fraction and fraction<=.2 and Color3.fromRGB(245,135,135) or fraction and fraction<=.45 and Color3.fromRGB(240,193,123) or palette.accent
+            condition.TextColor3=fraction and fraction<=.2 and Color3.fromRGB(245,135,135) or palette.muted
             local lowHp=data.hp and data.maximum and data.maximum>0 and targetRatio<=.25
             warning.Text=data.hp and data.hp<=0 and "ПЕРСОНАЖ ПОГИБ" or lowHp and "НИЗКОЕ ЗДОРОВЬЕ" or data.ammo and data.ammo<=3 and "МАЛО ПАТРОНОВ" or ""
             local tint=lowHp and Color3.fromRGB(245,135,135) or palette.accent
@@ -4273,7 +4404,7 @@ local function initializeEspArt()
         edge.Enabled=style~=3 and not distant and settings.espOpacity>0
         edge.Transparency=.7; edge.Thickness=style==2 and .75 or .5
         if style~=3 then
-            segment.BackgroundColor3=color:Lerp(Color3.fromRGB(235,245,250),style==2 and .85 or .7)
+            segment.BackgroundColor3=color:Lerp(Color3.fromRGB(235,245,250),style==2 and .72 or .55)
             segment.BackgroundTransparency=1-(settings.espOpacity/100)*(distant and .65 or .9)
         end
     end
@@ -4302,8 +4433,8 @@ local function initializeEspArt()
         if height then
             if height<30 then marker.smallChams=true elseif height>42 then marker.smallChams=false end
         end
-        local fillColor=style==3 and color or color:Lerp(Color3.fromRGB(225,240,249),.42)
-        local outline=style==3 and color or color:Lerp(Color3.fromRGB(245,251,255),.8)
+        local fillColor=style==3 and color or color:Lerp(Color3.fromRGB(225,240,249),.28)
+        local outline=style==3 and color or color:Lerp(Color3.fromRGB(245,251,255),.86)
         local strength=settings.fillOpacity/100
         local density=strength>0 and math.min(.92,math.sqrt(strength)+(marker.smallChams and .16 or 0)) or 0
         local fill=style==2 and 1 or style==3 and (1-strength) or 1-density
@@ -4660,20 +4791,20 @@ end
 local function ensureCard(screen)
     if screen.infoCard then return end
     screen.layoutLabel=screenLabel(screen.container); screen.layoutLabel.Name="PrismLayout"
-    screen.infoCard=create("Frame",screen.container,{Name="EspIdentityCard",BackgroundColor3=Color3.fromRGB(10,17,23),BackgroundTransparency=.16,BorderSizePixel=0,ZIndex=2})
+    screen.infoCard=create("Frame",screen.container,{Name="EspIdentityCard",BackgroundColor3=Color3.fromRGB(15,18,24),BackgroundTransparency=.16,BorderSizePixel=0,ZIndex=2})
     rounded(screen.infoCard,8)
     screen.healthPill=create("Frame",screen.infoCard,{BackgroundTransparency=.8,BorderSizePixel=0,ZIndex=2,Visible=false}); rounded(screen.healthPill,5)
     screen.identityAccent=create("Frame",screen.infoCard,{Position=UDim2.fromOffset(6,7),Size=UDim2.fromOffset(2,9),BackgroundTransparency=.15,BorderSizePixel=0,ZIndex=3}); rounded(screen.identityAccent,2)
     screen.cardHalo=create("Frame",screen.container,{BackgroundTransparency=1,BorderSizePixel=0,ZIndex=1,Visible=false}); rounded(screen.cardHalo,10)
     screen.haloEdge=stroke(screen.cardHalo,palette.accent,2); screen.haloEdge.Transparency=.88
-    screen.infoRim=stroke(screen.infoCard,Color3.fromRGB(175,193,202)); screen.infoRim.Transparency=.62
+    screen.infoRim=stroke(screen.infoCard,Color3.fromRGB(175,193,202)); screen.infoRim.Transparency=.7
     for _,label in ipairs({screen.nameLabel,screen.healthLabel,screen.distanceLabel}) do label.Parent=screen.infoCard; label.ZIndex=3 end
     create("UIGradient",screen.infoCard,{Rotation=105,Color=ColorSequence.new(Color3.fromRGB(245,250,255),Color3.fromRGB(130,150,175))})
-    screen.hpTrack=create("Frame",screen.infoCard,{Position=UDim2.new(0,6,1,-3),Size=UDim2.new(1,-12,0,2),BackgroundColor3=Color3.fromRGB(42,57,65),BorderSizePixel=0,ZIndex=3})
+    screen.hpTrack=create("Frame",screen.infoCard,{Position=UDim2.new(0,6,1,-3),Size=UDim2.new(1,-12,0,2),BackgroundColor3=Color3.fromRGB(39,46,57),BorderSizePixel=0,ZIndex=3})
     rounded(screen.hpTrack,2)
     screen.hpFill=create("Frame",screen.hpTrack,{Size=UDim2.fromScale(1,1),BackgroundColor3=Color3.fromRGB(140,225,180),BorderSizePixel=0,ZIndex=3}); rounded(screen.hpFill,2)
-    screen.weaponChip=create("Frame",screen.container,{Name="EspWeaponChip",BackgroundColor3=Color3.fromRGB(10,17,23),BackgroundTransparency=.22,BorderSizePixel=0,ZIndex=2,Visible=false})
-    rounded(screen.weaponChip,6); screen.weaponRim=stroke(screen.weaponChip,Color3.fromRGB(175,193,202)); screen.weaponRim.Transparency=.86
+    screen.weaponChip=create("Frame",screen.container,{Name="EspWeaponChip",BackgroundColor3=Color3.fromRGB(15,18,24),BackgroundTransparency=.22,BorderSizePixel=0,ZIndex=2,Visible=false})
+    rounded(screen.weaponChip,8); screen.weaponRim=stroke(screen.weaponChip,Color3.fromRGB(175,193,202)); screen.weaponRim.Transparency=.82
     screen.weaponLabel.ZIndex=3
     screen.anchorDot=create("Frame",screen.container,{Size=UDim2.fromOffset(3,3),BorderSizePixel=0,ZIndex=2,Visible=false}); rounded(screen.anchorDot,3)
 end
@@ -4707,7 +4838,7 @@ renderLabels=function(screen,candidate,low,high,camera,color)
     local shift,rectangle,width,height=placeLabel(screen.layoutLabel,value,center,low.Y-8,size,.5,1,camera,palette.text,true,8)
     screen.layoutLabel.Visible=false
     screen.infoCard.Visible=rectangle~=nil
-    screen.cardHalo.Visible=rectangle~=nil and not minimal and not settings.lowFx and not settings._fightFocus
+    screen.cardHalo.Visible=false
     screen.nameLabel.Visible=name~=""
     screen.healthLabel.Visible=hp~=""
     screen.distanceLabel.Visible=distance~=""
@@ -4717,7 +4848,7 @@ renderLabels=function(screen,candidate,low,high,camera,color)
         screen.cardHalo.Position=UDim2.fromOffset(math.round(rectangle.left)-2,math.round(rectangle.top)-2)
         screen.cardHalo.Size=UDim2.fromOffset(width+4,height+4); screen.haloEdge.Color=color
         screen.identityAccent.Visible=name~="" and not minimal; screen.identityAccent.BackgroundColor3=color
-        screen.infoCard.BackgroundTransparency=minimal and 1 or .08
+        screen.infoCard.BackgroundTransparency=minimal and 1 or .035
         screen.infoRim.Enabled=not minimal
         screen.infoRim.Color=isFriend(candidate.owner) and Color3.fromRGB(135,225,181) or color:Lerp(Color3.fromRGB(187,206,214),.5)
         screen.nameLabel.Position=UDim2.fromOffset(14,3)
@@ -4744,7 +4875,7 @@ renderLabels=function(screen,candidate,low,high,camera,color)
         screen.healthPill.Visible=hp~="" and not minimal
         screen.healthPill.Position=UDim2.fromOffset(5,y)
         screen.healthPill.Size=UDim2.fromOffset(math.min(width-10,math.max(45,size*4.4)),size+2)
-        screen.healthPill.BackgroundColor3=hpColor
+        screen.healthPill.BackgroundColor3=hpColor; screen.healthPill.BackgroundTransparency=.91
         screen.hpTrack.Visible=settings.health and not settings.healthBar
         screen.hpFill.BackgroundColor3=hpColor
         if screen.shownHp~=fraction then
