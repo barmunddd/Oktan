@@ -2727,8 +2727,8 @@ local function initializeCommandDock()
     island:FindFirstChildOfClass("UICorner").CornerRadius=UDim.new(0,14)
     island:FindFirstChildOfClass("UIStroke").Transparency=.78
     islandHeader.Size=UDim2.new(1,0,0,60)
-    islandBrand.Position=UDim2.fromOffset(44,10); islandBrand.Size=UDim2.fromOffset(106,23); islandBrand.TextSize=16; islandBrand.Font=Enum.Font.BuilderSansBold
-    text(islandHeader,"COMMAND DOCK",{Position=UDim2.fromOffset(44,35),Size=UDim2.fromOffset(112,13),TextSize=9,Font=Enum.Font.BuilderSansMedium,TextColor3=Color3.fromRGB(182,190,211),TextXAlignment=Enum.TextXAlignment.Left})
+    islandBrand.Position=UDim2.fromOffset(54,10); islandBrand.Size=UDim2.fromOffset(96,23); islandBrand.TextSize=16; islandBrand.Font=Enum.Font.BuilderSansBold
+    text(islandHeader,"COMMAND DOCK",{Name="DockBrandCaption",Position=UDim2.fromOffset(54,35),Size=UDim2.fromOffset(96,13),TextSize=9,Font=Enum.Font.BuilderSansMedium,TextColor3=Color3.fromRGB(182,190,211),TextXAlignment=Enum.TextXAlignment.Left})
     local mark=islandHeader:FindFirstChild("IslandMark"); if mark then mark.Position=UDim2.fromOffset(18,23); mark.Size=UDim2.fromOffset(14,14) end
     islandClock.Position=UDim2.fromOffset(172,28); islandClock.Size=UDim2.fromOffset(98,22); islandClock.TextSize=16; islandClock.Font=Enum.Font.RobotoMono; islandClock.TextXAlignment=Enum.TextXAlignment.Left
     islandKills.Position=UDim2.fromOffset(288,28); islandKills.Size=UDim2.fromOffset(108,22); islandKills.TextSize=14; islandKills.Font=Enum.Font.BuilderSansMedium; islandKills.TextXAlignment=Enum.TextXAlignment.Left
@@ -2795,12 +2795,30 @@ for _,host in ipairs({menu:FindFirstChild("StudioEmblem"),islandHeader:FindFirst
         local inset=create("Frame",host,{Name="BrandCore",Position=UDim2.fromOffset(5,5),Size=UDim2.new(1,-10,1,-10),BackgroundColor3=Color3.fromRGB(24,26,42),BorderSizePixel=0}); rounded(inset,4)
         local shine=create("Frame",host,{Position=UDim2.fromOffset(3,2),Size=UDim2.new(1,-6,0,2),BackgroundColor3=Color3.fromRGB(255,255,255),BackgroundTransparency=.35,BorderSizePixel=0}); rounded(shine,2)
         local depth=create("Frame",host,{Position=UDim2.new(0,3,1,-4),Size=UDim2.new(1,-6,0,2),BackgroundColor3=Color3.fromRGB(34,26,65),BackgroundTransparency=.15,BorderSizePixel=0}); rounded(depth,2)
+        host.ClipsDescendants=true
+        create("UIGradient",host,{Rotation=70,Color=ColorSequence.new(Color3.fromRGB(255,255,255),Color3.fromRGB(162,170,207))})
+        local sheen=create("Frame",host,{Name="BrandSheen",Position=UDim2.fromOffset(-10,-5),Size=UDim2.fromOffset(5,34),Rotation=20,BackgroundColor3=Color3.fromRGB(255,255,255),BackgroundTransparency=.45,BorderSizePixel=0,Visible=false,ZIndex=4})
+        create("UIGradient",sheen,{Transparency=NumberSequence.new({NumberSequenceKeypoint.new(0,1),NumberSequenceKeypoint.new(.5,.25),NumberSequenceKeypoint.new(1,1)})})
+        local sweep
+        host.MouseEnter:Connect(function()
+            if sweep then sweep:Cancel(); sweep=nil end
+            sheen.Visible=false
+            if not settings.motion or settings.lowFx then return end
+            sheen.Position=UDim2.fromOffset(-10,-5); sheen.Visible=true
+            sweep=TweenService:Create(sheen,TweenInfo.new(.5,Enum.EasingStyle.Quart,Enum.EasingDirection.Out),{Position=UDim2.fromOffset(30,-5)}); sweep:Play()
+        end)
+        host.MouseLeave:Connect(function() if sweep then sweep:Cancel(); sweep=nil end; sheen.Visible=false end)
+        table.insert(cleanups,function() if sweep then sweep:Cancel() end end)
         table.insert(cores,host)
     end
 end
 local menuMark=menu:FindFirstChild("StudioEmblem"); if menuMark then menuMark.Position=UDim2.fromOffset(28,22) end
 local dockMark=islandHeader:FindFirstChild("IslandMark"); if dockMark then dockMark.Position=UDim2.fromOffset(14,20) end
 title.Font=Enum.Font.BuilderSansExtraBold
+title.Position=UDim2.fromOffset(72,15); title.Size=UDim2.fromOffset(99,32)
+for _,child in ipairs(menu:GetChildren()) do
+    if child:IsA("TextLabel") and child.Text=="ATELIER   /   WINTER" then child.Position=UDim2.fromOffset(72,48) end
+end
 controlRows.brand={theme=function(accent) for _,host in ipairs(cores) do host.BackgroundColor3=accent end end}
 end
 
