@@ -23,7 +23,8 @@ end
 
 -- Every exposed setting has its own description, bounds and keyboard actions.
 local definitions = {
-    { "underground", false, "Underground", "Экспериментальный Dev-режим: неподвижно под поверхностью, камера над точкой входа. Бинд, Esc или плашка — выход. Нужен OktanDeveloper; отсутствие бана не гарантируется. Начинай с ровного пола.", "Мир" },
+    { "underground", false, "Underground", "Экспериментальный Dev-режим: WASD под поверхностью, камера следует сверху. Esc, плашка или повторный бинд возвращают на поверхность в текущей точке. Нужен OktanDeveloper; отсутствие бана не гарантируется.", "Мир" },
+    { "undergroundSpeed", 6, "Underground Speed", "Скорость движения WASD под поверхностью, в studs в секунду. Меню и ввод текста приостанавливают движение.", "Мир", 2, 12 },
     { "undergroundDepth", 6, "Underground Depth", "Глубина под поверхностью в studs, применяется при следующем включении. Режим не сохраняется активным в конфиг.", "Мир", 4, 12 },
     { "chamsStyle", 1, "Chams Style", "1 — Radiant: светлый цельный силуэт с перламутровым контуром; 2 — Outline: только контур; 3 — Classic. Fill Opacity регулирует интенсивность Radiant, 0 убирает заливку.", "ESP", 1, 3 },
     { "skeletonStyle", 1, "Skeleton Style", "1 — Silk: тонкие светлые линии без точек; 2 — Jointed: суставы только вблизи; 3 — Classic. Вдали детализация уменьшается, чтобы скелет не превращался в чёрные точки.", "ESP", 1, 3 },
@@ -2750,7 +2751,7 @@ local treeGroups = {
     ["Бинды"] = { "Инвентарь", "Dynamic Island", "Управление", "Назначения функций" },
     ["Настройки"] = { "Оформление", "Клиент", "Music", "Performance", "Combat" },
 }
-local settingGroup = { underground="Movement", undergroundDepth="Movement", chamsStyle="Chams", skeletonStyle="Skeleton", combatHud="Combat", fightFocus="Combat", teamToasts="Combat", mapPlayers="Map", mapNames="Map", mapFriendsOnly="Map", mapTextSize="Map", containerReach="Инвентарь", containerEsp="Loot", auroraEsp="Loot", espStyle = "Цвет и оформление", skinTextures = "Оформление", islandMusic = "Dynamic Island", adaptiveEsp = "Performance", lowFx = "Performance", perfDebug = "Performance", yandexPlay = "Music", spotifyPlay = "Music", musicPlay = "Music", musicVolume = "Music", musicRepeat = "Music", musicIndex = "Music", noRecoil = "Weapon Tuning", aimEase = "Область и плавность", aimFilter = "Область и плавность", graphics = "Visual Studio", gfxTier = "Visual Studio", gfxLook = "Visual Studio", echo = "Оформление", echoDelay = "Оформление", echoFreeze = "Оформление", motion = "Оформление", killFx = "Оформление", crossStyle = "Прицел", crossWidth = "Прицел", noLeaves = "Vegetation", noGrass = "Vegetation", corpseEsp = "Loot", itemEsp = "Loot", lootThrough = "Loot", lootRange = "Loot", lootTextSize = "Loot",
+local settingGroup = { underground="Movement", undergroundDepth="Movement", undergroundSpeed="Movement", chamsStyle="Chams", skeletonStyle="Skeleton", combatHud="Combat", fightFocus="Combat", teamToasts="Combat", mapPlayers="Map", mapNames="Map", mapFriendsOnly="Map", mapTextSize="Map", containerReach="Инвентарь", containerEsp="Loot", auroraEsp="Loot", espStyle = "Цвет и оформление", skinTextures = "Оформление", islandMusic = "Dynamic Island", adaptiveEsp = "Performance", lowFx = "Performance", perfDebug = "Performance", yandexPlay = "Music", spotifyPlay = "Music", musicPlay = "Music", musicVolume = "Music", musicRepeat = "Music", musicIndex = "Music", noRecoil = "Weapon Tuning", aimEase = "Область и плавность", aimFilter = "Область и плавность", graphics = "Visual Studio", gfxTier = "Visual Studio", gfxLook = "Visual Studio", echo = "Оформление", echoDelay = "Оформление", echoFreeze = "Оформление", motion = "Оформление", killFx = "Оформление", crossStyle = "Прицел", crossWidth = "Прицел", noLeaves = "Vegetation", noGrass = "Vegetation", corpseEsp = "Loot", itemEsp = "Loot", lootThrough = "Loot", lootRange = "Loot", lootTextSize = "Loot",
     noVisor = "Vision", cameraFov = "Vision", cameraFovValue = "Vision",
     viewmodel = "Viewmodel", vmX = "Viewmodel", vmY = "Viewmodel", vmZ = "Viewmodel", sticky = "Наведение", noFog = "Освещение", bubbles = "Оформление", snow = "Оформление", snowDrifts = "Оформление", friendHats = "Оформление", espFps = "Цвет и оформление", adaptiveText = "Подписи",
     aim = "Наведение", aimPlayers = "Цели и проверки", aimDummies = "Цели и проверки",
@@ -4228,7 +4229,7 @@ local function initializeUnderground()
             record("exit",session,message)
             local same=player.Character==session.character and session.root.Parent and session.human.Parent and session.human.Health>0
             if returnToSurface~=false and same and (session.root.CFrame.Position-session.target.Position).Magnitude<3 then
-                session.root.CFrame=session.origin
+                session.root.CFrame=session.surface or session.origin
                 session.root.AssemblyLinearVelocity=Vector3.new(0,0,0)
                 session.root.AssemblyAngularVelocity=Vector3.new(0,0,0)
             end
@@ -4268,7 +4269,7 @@ local function initializeUnderground()
         local origin=root.CFrame
         local target=origin+Vector3.new(0,hit.Position.Y-settings.undergroundDepth-origin.Position.Y,0)
         local proxy=create("Part",camera,{Name="OktanSurfaceAnchor",Size=Vector3.new(1,1,1),CFrame=origin+Vector3.new(0,1.5,0),Anchored=true,CanCollide=false,CanTouch=false,CanQuery=false,Transparency=1})
-        local session={character=character,root=root,human=human,camera=camera,subject=camera.CameraSubject,proxy=proxy,origin=origin,target=target,parts=parts,walk=human.WalkSpeed,rotate=human.AutoRotate,depth=settings.undergroundDepth}
+        local session={character=character,root=root,human=human,camera=camera,subject=camera.CameraSubject,proxy=proxy,origin=origin,surface=origin,rootHeight=origin.Position.Y-hit.Position.Y,target=target,parts=parts,walk=human.WalkSpeed,rotate=human.AutoRotate,depth=settings.undergroundDepth}
         api.session=session
         local ok=pcall(function()
             for part in pairs(parts) do part.CanCollide=false end
@@ -4284,7 +4285,7 @@ local function initializeUnderground()
         end)
         if not ok then api.stop("Underground: не удалось включить, изменения восстановлены"); return false end
         settings.underground=true; setMenu(false)
-        announce("Underground активен · Esc или повторный бинд — выход")
+        announce("Underground · WASD — движение · Esc — выход")
         record("entered",session,api.state); api.lastSample=os.clock(); api.writeReport()
         return true
     end
@@ -4298,6 +4299,37 @@ local function initializeUnderground()
         if controlRows.mapOverlay and controlRows.mapOverlay.isOpen() then api.stop("Underground выключен при открытии карты"); return end
         if (session.root.CFrame.Position-session.target.Position).Magnitude>3 then api.stop("Underground выключен: позиция изменена игрой",false); return end
         if dt and dt>.25 then api.stop("Underground выключен: слишком большой пропуск кадров"); return end
+        if focused and not menu.Visible and not Input:GetFocusedTextBox() then
+            local forward=session.camera.CFrame.LookVector or Vector3.new(0,0,-1)
+            forward=Vector3.new(forward.X,0,forward.Z)
+            if forward.Magnitude<.001 then forward=Vector3.new(0,0,-1) else forward=forward*(1/forward.Magnitude) end
+            local right=Vector3.new(-forward.Z,0,forward.X)
+            local direction=Vector3.new(0,0,0)
+            if Input:IsKeyDown(Enum.KeyCode.W) then direction+=forward end
+            if Input:IsKeyDown(Enum.KeyCode.S) then direction-=forward end
+            if Input:IsKeyDown(Enum.KeyCode.D) then direction+=right end
+            if Input:IsKeyDown(Enum.KeyCode.A) then direction-=right end
+            if direction.Magnitude>.001 then
+                direction=direction*(1/math.max(1,direction.Magnitude))
+                local nextPosition=session.surface.Position+direction*(settings.undergroundSpeed*math.clamp(dt or 0,0,.1))
+                ray.FilterDescendantsInstances={session.character,session.camera}
+                local hit=workspace:Raycast(nextPosition+Vector3.new(0,2,0),Vector3.new(0,-12,0),ray)
+                local valid=hit and hit.Position and hit.Normal and hit.Normal.Y>=.65 and hit.Material~=Enum.Material.Water
+                if valid and hit.Instance and hit.Instance:IsA("BasePart") then valid=hit.Instance.Anchored and hit.Instance.CanCollide end
+                if valid then valid=math.abs(hit.Position.Y+session.rootHeight-session.surface.Position.Y)<=2 end
+                local blocked=not valid
+                if blocked~=session.movementBlocked then
+                    session.movementBlocked=blocked
+                    record(blocked and "movement-blocked" or "movement-resumed",session)
+                end
+                if valid then
+                    local surface=session.surface+Vector3.new(nextPosition.X-session.surface.Position.X,hit.Position.Y+session.rootHeight-session.surface.Position.Y,nextPosition.Z-session.surface.Position.Z)
+                    session.surface=surface
+                    session.target=surface+Vector3.new(0,-session.rootHeight-session.depth,0)
+                    session.proxy.CFrame=surface+Vector3.new(0,1.5,0)
+                end
+            end
+        end
         if os.clock()-(api.lastSample or 0)>=.25 then record("sample",session); api.lastSample=os.clock() end
         session.human.Jump=false
         session.root.CFrame=session.target
@@ -4309,7 +4341,7 @@ local function initializeUnderground()
         if panel.Visible then
             local camera=workspace.CurrentCamera
             if camera then fit.Scale=math.min(1,math.max(.3,(camera.ViewportSize.X-24)/360)) end
-            panel.Text=api.session and "UNDERGROUND  ·  "..api.session.depth.." st  ·  нажми для выхода" or api.state
+            panel.Text=api.session and (api.session.movementBlocked and "UNDERGROUND · нет подходящей поверхности · выход" or "UNDERGROUND · WASD · "..api.session.depth.." st · выход") or api.state
             panel.TextColor3=palette.accent; panel.BackgroundColor3=palette.background
         end
     end
