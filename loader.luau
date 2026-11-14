@@ -1,6 +1,6 @@
 -- Oktan authenticated loader. Keys stay in memory and are never sent to the renewal URL.
 local RENEW_URL = "https://funpay.com/users/15095530/"
-local CLIENT_URL = "https://raw.githubusercontent.com/barmunddd/Oktan/9aef28455c78cdb942b4517dd65b284717bd3b0c/client.luau"
+local CLIENT_URL = "https://raw.githubusercontent.com/barmunddd/Oktan/2284a65f6fec3eaadb55e10268cf3b73aaecdba1/client.luau"
 local env = getgenv()
 local playerGui = game:GetService("Players").LocalPlayer:WaitForChild("PlayerGui")
 local function makeStartup(name)
@@ -125,6 +125,17 @@ local function boot()
         key = nil; accessNotice(reason, reason == "expired"); return false
     end
     local session = { status = "active", renewUrl = RENEW_URL, cancelled = false, terminated = false }
+    session.presence = function(op, fields)
+        if not key or session.cancelled or session.terminated then return nil, 401 end
+        local body={key=key,op=op}
+        for _,name in ipairs({"username","user_id","place_id","job_id","label","friends"}) do body[name]=fields and fields[name] end
+        local ok,response=pcall(send,{Url="https://oktandev.pythonanywhere.com/presence",Method="POST",Headers={["Content-Type"]="application/json"},Body=http:JSONEncode(body),Timeout=10})
+        if not ok or type(response)~="table" then return nil,0 end
+        if response.StatusCode~=200 then return nil,response.StatusCode end
+        local parsed,result=pcall(function() return http:JSONDecode(response.Body) end)
+        if not parsed or type(result)~="table" or result.ok~=true then return nil,0 end
+        return result,200
+    end
     local function timestamp(value) return type(value) == "number" and value == value and value >= 1000000000 and value < 1000000000000 end
     local function update(result)
         session.status = "active"
