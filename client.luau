@@ -38,7 +38,7 @@ local definitions = {
     { "containerReach", 250, "Container Reach", "Дальность Inspect для сундуков: 25–1500 studs. Наведи прицел на сундук; доступны только переданные клиенту предметы.", "Настройки", 25, 1500 },
     { "containerEsp", false, "Containers", "Метки доступных сундуков в папках Containers/Chests. Дальность — Loot Distance.", "ESP" },
     { "auroraEsp", false, "Aurora", "Отдельные метки сундуков с Aurora/Аврора в имени или DisplayName. Если имя модели другое, включи Containers.", "ESP" },
-    { "espStyle", 2, "ESP Style", "Classic — прежние подписи; Glass — компактные карточки, здоровье и оружие под ногами; Minimal — без подложек; Trace — свободные подписи без подложек, вертикальная шкала HP у силуэта; в толпе дальние подписи скрываются без смещения. Chams и линии мягче в Glass/Minimal.", "ESP", 1, 4 },
+    { "espStyle", 2, "ESP Style", "Classic — прежние подписи; Glass — компактные карточки, здоровье и оружие под ногами; Minimal — без подложек; Compact — небольшие карточки с мягкой подложкой, ником, HP и дистанцией. В толпе дальние подписи скрываются без смещения. Chams и линии мягче в Glass/Minimal.", "ESP", 1, 4 },
     { "skinTextures", true, "Atmosphere Detail", "Тонкая архитектурная сетка поверх слоёв света. Light Menu скрывает фон целиком.", "Настройки" },
     { "islandMusic", true, "Music Island", "Музыка в Dynamic Island: плавная смена трека, Pause/Stop и локальные строки LRC. В развёрнутом виде время, киллы и бинды сохраняются.", "Бинды" },
     { "adaptiveEsp", true, "Adaptive ESP", "При большом числе целей снижает частоту только ESP: до 30 обновлений/с после 16 целей и до 20 после 32. Игровой FPS не ограничивает; все цели остаются видимыми.", "Настройки" },
@@ -3595,7 +3595,7 @@ renderGraph = function()
                 local reset = button(panel, "Вернуть исходный", UDim2.fromOffset(8, 342), UDim2.fromOffset(200, 34))
                 reset.Activated:Connect(function() choose(initial) end)
             elseif entry.key == "combatHudPosition" or entry.key == "gfxTier" or entry.key == "gfxLook" or entry.key == "espStyle" or entry.key == "chamsStyle" or entry.key == "skeletonStyle" then
-                local names = entry.key == "combatHudPosition" and { "Center", "Left", "Right" } or entry.key == "chamsStyle" and { "Radiant", "Outline", "Classic", "Spectral" } or entry.key == "skeletonStyle" and { "Silk", "Jointed", "Classic", "Ribbon" } or entry.key == "espStyle" and { "Classic", "Glass", "Minimal", "Trace" } or entry.key == "gfxTier" and { "Low", "Balanced", "Ultra" } or { "Arctic", "Golden", "Neon", "Cinema", "Clean" }
+                local names = entry.key == "combatHudPosition" and { "Center", "Left", "Right" } or entry.key == "chamsStyle" and { "Radiant", "Outline", "Classic", "Spectral" } or entry.key == "skeletonStyle" and { "Silk", "Jointed", "Classic", "Ribbon" } or entry.key == "espStyle" and { "Classic", "Glass", "Minimal", "Compact" } or entry.key == "gfxTier" and { "Low", "Balanced", "Ultra" } or { "Arctic", "Golden", "Neon", "Cinema", "Clean" }
                 local panel = create("Frame", detailBody, { Size = UDim2.new(1, -20, 0, 95), BackgroundTransparency = 1, LayoutOrder = 1 })
                 table.insert(temporaryRows, panel)
                 local buttons = {}
@@ -4332,16 +4332,25 @@ local function initializeCombatUI()
         local key=name..":"..kind
         for _,item in ipairs(api.notices) do if item.key==key then return false end end
         if #api.notices>=3 then drop(1) end
-        local card=create("CanvasGroup",noticeRoot,{Name="TeamNotice",Size=UDim2.fromOffset(290,68),BackgroundColor3=palette.background,BackgroundTransparency=.05,BorderSizePixel=0,GroupTransparency=1})
-        rounded(card,16); local edge=stroke(card,palette.accent); edge.Transparency=.72
-        create("UIGradient",card,{Rotation=115,Color=ColorSequence.new(Color3.fromRGB(245,250,255),Color3.fromRGB(145,160,175))})
-        local badge=create("Frame",card,{Position=UDim2.fromOffset(12,15),Size=UDim2.fromOffset(36,36),BackgroundColor3=palette.control,BackgroundTransparency=.15,BorderSizePixel=0}); rounded(badge,12)
-        text(badge,kind=="death" and "!" or kind=="join" and "+" or kind=="leave" and "−" or "•",{Size=UDim2.fromScale(1,1),TextSize=19,TextColor3=kind=="death" and Color3.fromRGB(240,150,150) or palette.accent})
-        local progress=create("Frame",card,{Name="NoticeLifetime",Position=UDim2.new(0,60,1,-9),Size=UDim2.fromOffset(214,2),BackgroundColor3=palette.accent,BackgroundTransparency=.35,BorderSizePixel=0}); rounded(progress,3)
-        local dot=create("Frame",card,{Position=UDim2.fromOffset(275,17),Size=UDim2.fromOffset(6,6),BorderSizePixel=0,BackgroundColor3=kind=="death" and Color3.fromRGB(240,130,130) or palette.accent}); rounded(dot,4)
-        text(card,"@"..name,{Position=UDim2.fromOffset(60,11),Size=UDim2.fromOffset(205,20),TextSize=12,TextTruncate=Enum.TextTruncate.AtEnd,TextXAlignment=Enum.TextXAlignment.Left})
-        text(card,message,{Position=UDim2.fromOffset(60,33),Size=UDim2.fromOffset(214,18),TextSize=10,TextColor3=palette.muted,TextXAlignment=Enum.TextXAlignment.Left})
-        table.insert(api.notices,{key=key,card=card,edge=edge,progress=progress,age=0})
+        local tint=kind=="death" and Color3.fromRGB(255,154,168) or (kind=="far" or kind=="leave") and Color3.fromRGB(235,199,146) or kind=="near" and Color3.fromRGB(146,228,199) or Color3.fromRGB(203,187,250)
+        local captions={near="РЯДОМ",far="ДИСТАНЦИЯ",death="ПОГИБ",join="В СЕТИ",leave="ВЫШЕЛ"}
+        local card=create("CanvasGroup",noticeRoot,{Name="TeamNotice",Size=UDim2.fromOffset(290,64),BackgroundColor3=palette.background,BackgroundTransparency=.08,BorderSizePixel=0,GroupTransparency=1})
+        rounded(card,12); local edge=stroke(card,tint); edge.Transparency=.86
+        local zoom=create("UIScale",card,{Scale=.96})
+        local rail=create("Frame",card,{Position=UDim2.fromOffset(0,16),Size=UDim2.fromOffset(2,32),BackgroundColor3=tint,BorderSizePixel=0}); rounded(rail,2)
+        local badge=create("Frame",card,{Name="NoticeAvatar",Position=UDim2.fromOffset(12,14),Size=UDim2.fromOffset(34,34),BackgroundColor3=palette.control,BackgroundTransparency=.1,BorderSizePixel=0}); rounded(badge,10)
+        text(badge,string.upper(name:sub(1,2)),{Name="AvatarFallback",Size=UDim2.fromScale(1,1),TextSize=12,TextColor3=tint})
+        local state=api.states[string.lower(name)]
+        local userId=state and state.userId
+        for _,other in ipairs(Players:GetPlayers()) do if string.lower(other.Name)==string.lower(name) then userId=other.UserId; break end end
+        if type(userId)=="number" and userId>0 then
+            local avatar=create("ImageLabel",badge,{Name="AvatarImage",Size=UDim2.fromScale(1,1),BackgroundTransparency=1,Image="rbxthumb://type=AvatarHeadShot&id="..string.format("%.0f",userId).."&w=150&h=150",ZIndex=2}); rounded(avatar,10)
+        end
+        local progress=create("Frame",card,{Name="NoticeLifetime",Position=UDim2.new(0,58,1,-7),Size=UDim2.fromOffset(218,1),BackgroundColor3=tint,BackgroundTransparency=.38,BorderSizePixel=0}); rounded(progress,2)
+        text(card,"@"..name,{Position=UDim2.fromOffset(58,8),Size=UDim2.fromOffset(218,17),TextSize=12,Font=Enum.Font.GothamMedium,TextTruncate=Enum.TextTruncate.AtEnd,TextXAlignment=Enum.TextXAlignment.Left})
+        text(card,captions[kind] or "SQUAD",{Name="EventCaption",Position=UDim2.fromOffset(58,27),Size=UDim2.fromOffset(82,12),TextSize=8,TextColor3=tint,TextXAlignment=Enum.TextXAlignment.Left})
+        text(card,message,{Position=UDim2.fromOffset(58,40),Size=UDim2.fromOffset(218,12),TextSize=9,TextColor3=palette.muted,TextXAlignment=Enum.TextXAlignment.Left})
+        table.insert(api.notices,{key=key,card=card,edge=edge,progress=progress,zoom=zoom,color=tint,age=0})
         return true
     end
     api.scanTeam=function()
@@ -4358,6 +4367,7 @@ local function initializeCombatUI()
                 local root=character and character:FindFirstChild("HumanoidRootPart")
                 local distance=mine and root and (mine.Position-root.Position).Magnitude
                 local state=api.states[key]
+                state.userId=other.UserId
                 if not state.present and not state.seed then api.notify(other.Name,"Тиммейт присоединился к серверу","join") end
                 if state.character==character and hp and hp<=0 and state.hp and state.hp>0 then api.notify(other.Name,"Тиммейт погиб","death") end
                 if distance and hp and hp>0 then
@@ -4451,15 +4461,17 @@ local function initializeCombatUI()
             local item=api.notices[index]; item.age+=dt
             if item.age>=4.5 then drop(index)
             else
-                local alpha=math.clamp(item.age/.24,0,1)*math.clamp((4.5-item.age)/.3,0,1)
+                local enter=math.clamp(item.age/.3,0,1)
+                local alpha=(1-(1-enter)^3)*math.clamp((4.5-item.age)/.25,0,1)
                 if not settings.motion or settings.lowFx then alpha=1 end
                 item.card.GroupTransparency=1-alpha
-                local targetY=(index-1)*76
+                local targetY=(index-1)*72
                 item.y=item.y or targetY
                 item.y=settings.motion and item.y+(targetY-item.y)*(1-math.exp(-18*dt)) or targetY
                 item.card.Position=UDim2.fromOffset((1-alpha)*20,item.y)
-                item.card.BackgroundColor3=palette.background; item.edge.Color=palette.accent
-                item.progress.Size=UDim2.fromOffset(214*math.clamp(1-item.age/4.5,0,1),2); item.progress.BackgroundColor3=palette.accent
+                item.zoom.Scale=.96+.04*alpha
+                item.card.BackgroundColor3=palette.background; item.edge.Color=item.color
+                item.progress.Size=UDim2.fromOffset(218*math.clamp(1-item.age/4.5,0,1),1)
             end
         end
     end
@@ -5026,6 +5038,7 @@ local spaciousLabels=renderLabels
 renderLabels=function(screen,candidate,low,high,camera,color)
     if settings.espStyle~=4 then
         if screen.infoCard then
+            if screen.compactApplied then screen.shownHp=nil; screen.hpTrack.BackgroundTransparency=0; screen.compactApplied=nil end
             screen.friendBadge.Position=UDim2.new(1,-41,0,4); screen.friendBadge.Size=UDim2.fromOffset(35,12); screen.friendBadge.TextSize=8
             screen.friendBadge.BackgroundTransparency=.28
             if screen.hpTrack.Parent~=screen.infoCard then
@@ -5037,6 +5050,8 @@ renderLabels=function(screen,candidate,low,high,camera,color)
         spaciousLabels(screen,candidate,low,high,camera,color); return
     end
     ensureCard(screen)
+    local restyle=not screen.compactApplied
+    screen.compactApplied=true
     for _,label in ipairs({screen.nameLabel,screen.healthLabel,screen.distanceLabel}) do label.Parent=screen.infoCard; label.Visible=false; label.TextStrokeTransparency=1 end
     screen.infoCard.Visible=false; screen.cardHalo.Visible=false; screen.weaponChip.Visible=false
     screen.weaponLabel.Visible=false; screen.anchorDot.Visible=false; screen.friendBadge.Visible=false
@@ -5049,10 +5064,10 @@ renderLabels=function(screen,candidate,low,high,camera,color)
     local fraction=math.clamp(candidate.humanoid.Health/math.max(1,candidate.humanoid.MaxHealth),0,1)
     local name=settings.names and (candidate.owner and candidate.owner.Name or candidate.model.Name) or allied and "ALLY" or ""
     local meters=math.round((candidate.root.Position-camera.CFrame.Position).Magnitude*.28)
-    local hp=settings.health and ((near or fraction<.35) and tostring(math.ceil(candidate.humanoid.Health)).." HP" or "") or ""
+    local hp=settings.health and tostring(math.ceil(candidate.humanoid.Health)).." HP" or ""
     local distance=settings.distance and tostring(meters).." м" or ""
     if name=="" and hp=="" and distance=="" and not settings.health then return end
-    local width,height=near and 116 or 98,near and 28 or 23
+    local width,height=near and 128 or 112,near and 36 or 32
     local left=math.round((low.X+high.X)*.5-width*.5)
     local top=math.round(low.Y-height-7)
     local viewport=camera.ViewportSize
@@ -5076,33 +5091,36 @@ renderLabels=function(screen,candidate,low,high,camera,color)
     cells(function(key) occupiedLabels[key]=occupiedLabels[key] or {}; table.insert(occupiedLabels[key],rect) end)
     local card=screen.infoCard
     card.Visible=true; card.Position=UDim2.fromOffset(left,top); card.Size=UDim2.fromOffset(width,height)
-    card.BackgroundColor3=Color3.fromRGB(12,16,24); card.BackgroundTransparency=1
-    card:FindFirstChildOfClass("UICorner").CornerRadius=UDim.new(0,4)
-    screen.infoRim.Enabled=false
+    card.BackgroundColor3=Color3.fromRGB(22,25,36); card.BackgroundTransparency=.12
+    card:FindFirstChildOfClass("UICorner").CornerRadius=UDim.new(0,8)
+    screen.infoRim.Enabled=true; screen.infoRim.Transparency=.76
+    screen.infoRim.Color=fraction<.35 and Color3.fromRGB(255,149,160) or allied and Color3.fromRGB(146,242,211) or Color3.fromRGB(174,170,208)
+    local gradient=card:FindFirstChildOfClass("UIGradient")
+    if gradient and restyle then gradient.Rotation=90; gradient.Color=ColorSequence.new(Color3.fromRGB(250,250,255),Color3.fromRGB(200,205,224)) end
     screen.nameLabel.Visible=name~=""; screen.nameLabel.Text=name
-    screen.nameLabel.Position=UDim2.fromOffset(5,1); screen.nameLabel.Size=UDim2.fromOffset(width-(allied and settings.names and 32 or 10),near and 13 or 11)
-    screen.nameLabel.TextSize=near and 11 or 10; screen.nameLabel.Font=Enum.Font.GothamMedium
+    screen.nameLabel.Position=UDim2.fromOffset(8,4); screen.nameLabel.Size=UDim2.fromOffset(width-(allied and settings.names and 36 or 16),near and 15 or 13)
+    screen.nameLabel.TextSize=near and 12 or 11; screen.nameLabel.Font=Enum.Font.GothamMedium
     screen.nameLabel.TextTruncate=Enum.TextTruncate.AtEnd; screen.nameLabel.TextXAlignment=Enum.TextXAlignment.Left
     screen.nameLabel.TextColor3=allied and Color3.fromRGB(146,242,211) or Color3.fromRGB(232,235,245)
-    screen.nameLabel.TextStrokeTransparency=.35
+    screen.nameLabel.TextStrokeTransparency=1
     screen.friendBadge.Visible=allied and settings.names
-    screen.friendBadge.Position=UDim2.new(1,-27,0,2); screen.friendBadge.Size=UDim2.fromOffset(23,10); screen.friendBadge.TextSize=7
+    screen.friendBadge.Position=UDim2.new(1,-29,0,5); screen.friendBadge.Size=UDim2.fromOffset(23,10); screen.friendBadge.TextSize=7
     screen.friendBadge.BackgroundTransparency=1
     screen.healthLabel.Text=hp; screen.healthLabel.Visible=hp~=""
-    screen.healthLabel.Position=UDim2.fromOffset(5,name~="" and (near and 14 or 12) or 3)
-    screen.healthLabel.Size=UDim2.fromOffset(width*.5,10); screen.healthLabel.TextSize=8; screen.healthLabel.TextXAlignment=Enum.TextXAlignment.Left
+    screen.healthLabel.Position=UDim2.fromOffset(8,name~="" and (near and 21 or 18) or 8)
+    screen.healthLabel.Size=UDim2.fromOffset(width*.5-8,10); screen.healthLabel.TextSize=9; screen.healthLabel.TextXAlignment=Enum.TextXAlignment.Left
     screen.healthLabel.TextColor3=fraction<.35 and Color3.fromRGB(255,149,160) or Color3.fromRGB(174,206,196)
     screen.distanceLabel.Text=distance; screen.distanceLabel.Visible=distance~=""
-    screen.distanceLabel.Position=UDim2.fromOffset(5,name~="" and (near and 14 or 12) or 3)
-    screen.distanceLabel.Size=UDim2.fromOffset(width-10,10); screen.distanceLabel.TextSize=8
-    screen.distanceLabel.TextXAlignment=Enum.TextXAlignment.Right; screen.distanceLabel.TextColor3=Color3.fromRGB(161,172,189)
-    screen.healthLabel.TextStrokeTransparency=.4; screen.distanceLabel.TextStrokeTransparency=.4
+    screen.distanceLabel.Position=UDim2.fromOffset(width*.5,name~="" and (near and 21 or 18) or 8)
+    screen.distanceLabel.Size=UDim2.fromOffset(width*.5-8,10); screen.distanceLabel.TextSize=9
+    screen.distanceLabel.TextXAlignment=Enum.TextXAlignment.Right; screen.distanceLabel.TextColor3=Color3.fromRGB(190,199,215)
+    screen.healthLabel.TextStrokeTransparency=1; screen.distanceLabel.TextStrokeTransparency=1
     screen.hpTrack.Visible=settings.health and not settings.healthBar
-    screen.hpTrack.Parent=screen.container
-    screen.hpTrack.Position=UDim2.fromOffset(low.X-5,low.Y); screen.hpTrack.Size=UDim2.fromOffset(1,bodyHeight)
-    screen.hpTrack.BackgroundTransparency=.55
-    screen.hpFill.AnchorPoint=Vector2.new(0,1); screen.hpFill.Position=UDim2.fromScale(0,1)
-    screen.hpFill.Size=UDim2.fromScale(1,fraction); screen.hpFill.BackgroundColor3=screen.healthLabel.TextColor3
+    screen.hpTrack.Parent=screen.infoCard
+    screen.hpTrack.Position=UDim2.new(0,8,1,-2); screen.hpTrack.Size=UDim2.new(1,-16,0,1)
+    screen.hpTrack.BackgroundTransparency=.5
+    screen.hpFill.AnchorPoint=Vector2.new(0,0); screen.hpFill.Position=UDim2.fromScale(0,0)
+    screen.hpFill.Size=UDim2.fromScale(fraction,1); screen.hpFill.BackgroundColor3=screen.healthLabel.TextColor3
     if near and settings.weapon then
         local weapon=heldItem(candidate.model)
         if weapon then placeLabel(screen.weaponLabel,weapon.Name,(low.X+high.X)*.5,high.Y+3,9,.5,0,camera,Color3.fromRGB(190,198,211),false,0); screen.weaponLabel.TextStrokeTransparency=.45 end
